@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,6 +7,13 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     cors_origins: list[str] = ["http://localhost:5173"]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_cors_origins(cls, value):
+        if isinstance(value, str) and not value.strip().startswith("["):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     firebase_project_id: str = ""
     firebase_service_account_json: str = ""
