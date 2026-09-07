@@ -1,0 +1,398 @@
+{
+  "info": {
+    "name": "FlockGuard API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{id_token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000" },
+    { "key": "firebase_api_key", "value": "" },
+    { "key": "test_email", "value": "apitest@flockguard.dev" },
+    { "key": "test_password", "value": "TestPass123!" },
+    { "key": "id_token", "value": "" },
+    { "key": "farm_id", "value": "" },
+    { "key": "house_id", "value": "" },
+    { "key": "flock_id", "value": "" },
+    { "key": "alert_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Sign Up Test User",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={{firebase_api_key}}",
+              "protocol": "https",
+              "host": ["identitytoolkit", "googleapis", "com"],
+              "path": ["v1", "accounts:signUp"],
+              "query": [{ "key": "key", "value": "{{firebase_api_key}}" }]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\",\n  \"returnSecureToken\": true\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('id_token', pm.response.json().idToken);",
+                  "    console.log('id_token saved');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign In (get fresh token)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebase_api_key}}",
+              "protocol": "https",
+              "host": ["identitytoolkit", "googleapis", "com"],
+              "path": ["v1", "accounts:signInWithPassword"],
+              "query": [{ "key": "key", "value": "{{firebase_api_key}}" }]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\",\n  \"returnSecureToken\": true\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('id_token', pm.response.json().idToken);",
+                  "    console.log('id_token saved');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Farms",
+      "item": [
+        {
+          "name": "List Farms",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/farms", "host": ["{{base_url}}"], "path": ["farms"] }
+          }
+        },
+        {
+          "name": "Create Farm",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/farms", "host": ["{{base_url}}"], "path": ["farms"] },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"name\": \"Test Farm\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set('farm_id', pm.response.json().id);",
+                  "    console.log('farm_id saved');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Houses",
+      "item": [
+        {
+          "name": "List Houses",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/farms/:farm_id/houses",
+              "host": ["{{base_url}}"],
+              "path": ["farms", ":farm_id", "houses"],
+              "variable": [{ "key": "farm_id", "value": "{{farm_id}}" }]
+            }
+          }
+        },
+        {
+          "name": "Create House",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/farms/:farm_id/houses",
+              "host": ["{{base_url}}"],
+              "path": ["farms", ":farm_id", "houses"],
+              "variable": [{ "key": "farm_id", "value": "{{farm_id}}" }]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"name\": \"House A\",\n  \"bird_capacity\": 5000\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set('house_id', pm.response.json().id);",
+                  "    console.log('house_id saved');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get House",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/farms/:farm_id/houses/:house_id",
+              "host": ["{{base_url}}"],
+              "path": ["farms", ":farm_id", "houses", ":house_id"],
+              "variable": [
+                { "key": "farm_id", "value": "{{farm_id}}" },
+                { "key": "house_id", "value": "{{house_id}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Flocks",
+      "item": [
+        {
+          "name": "Create Flock",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/farms/:farm_id/houses/:house_id/flocks",
+              "host": ["{{base_url}}"],
+              "path": ["farms", ":farm_id", "houses", ":house_id", "flocks"],
+              "variable": [
+                { "key": "farm_id", "value": "{{farm_id}}" },
+                { "key": "house_id", "value": "{{house_id}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"breed\": \"Broiler\",\n  \"start_date\": \"2026-08-01\",\n  \"initial_bird_count\": 5000\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set('flock_id', pm.response.json().id);",
+                  "    console.log('flock_id saved');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Flocks",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/farms/:farm_id/houses/:house_id/flocks",
+              "host": ["{{base_url}}"],
+              "path": ["farms", ":farm_id", "houses", ":house_id", "flocks"],
+              "variable": [
+                { "key": "farm_id", "value": "{{farm_id}}" },
+                { "key": "house_id", "value": "{{house_id}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Flock Checks",
+      "item": [
+        {
+          "name": "Submit Flock Check (Normal)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/farms/:farm_id/houses/:house_id/flock-checks",
+              "host": ["{{base_url}}"],
+              "path": ["farms", ":farm_id", "houses", ":house_id", "flock-checks"],
+              "variable": [
+                { "key": "farm_id", "value": "{{farm_id}}" },
+                { "key": "house_id", "value": "{{house_id}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"period\": \"morning\",\n  \"bird_count\": 5000,\n  \"mortality\": 2,\n  \"feed_kg\": 250,\n  \"water_level\": \"normal\",\n  \"activity\": \"normal\",\n  \"feeding_behaviour\": \"normal\",\n  \"notes\": \"All normal\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit Flock Check (Risky)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/farms/:farm_id/houses/:house_id/flock-checks",
+              "host": ["{{base_url}}"],
+              "path": ["farms", ":farm_id", "houses", ":house_id", "flock-checks"],
+              "variable": [
+                { "key": "farm_id", "value": "{{farm_id}}" },
+                { "key": "house_id", "value": "{{house_id}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"period\": \"evening\",\n  \"bird_count\": 4990,\n  \"mortality\": 12,\n  \"feed_kg\": 150,\n  \"water_level\": \"lower\",\n  \"activity\": \"lethargic\",\n  \"feeding_behaviour\": \"reduced\",\n  \"crowding_observed\": true,\n  \"unusual_sound_observed\": true,\n  \"notes\": \"Birds huddled in corner, quiet\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Flock Checks",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/farms/:farm_id/houses/:house_id/flock-checks",
+              "host": ["{{base_url}}"],
+              "path": ["farms", ":farm_id", "houses", ":house_id", "flock-checks"],
+              "variable": [
+                { "key": "farm_id", "value": "{{farm_id}}" },
+                { "key": "house_id", "value": "{{house_id}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "item": [
+        {
+          "name": "List Alerts",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/alerts", "host": ["{{base_url}}"], "path": ["alerts"] }
+          }
+        },
+        {
+          "name": "Acknowledge Alert",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/alerts/:alert_id/acknowledge",
+              "host": ["{{base_url}}"],
+              "path": ["alerts", ":alert_id", "acknowledge"],
+              "variable": [{ "key": "alert_id", "value": "{{alert_id}}" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "House Trends",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/farms/:farm_id/houses/:house_id/analytics/trends",
+              "host": ["{{base_url}}"],
+              "path": ["farms", ":farm_id", "houses", ":house_id", "analytics", "trends"],
+              "variable": [
+                { "key": "farm_id", "value": "{{farm_id}}" },
+                { "key": "house_id", "value": "{{house_id}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Compare Houses",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/farms/:farm_id/analytics/compare-houses",
+              "host": ["{{base_url}}"],
+              "path": ["farms", ":farm_id", "analytics", "compare-houses"],
+              "variable": [{ "key": "farm_id", "value": "{{farm_id}}" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ask FlockGuard",
+      "item": [
+        {
+          "name": "Ask a question",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/ask", "host": ["{{base_url}}"], "path": ["ask"] },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"question\": \"Which house should I inspect first and why?\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

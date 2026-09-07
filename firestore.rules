@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // backend/app/core/deps.py::get_current_org_id falls back to the
+    // caller's own uid whenever no `org_id` custom claim is set on their
+    // token - and nothing in this codebase ever sets that claim today, so
+    // every real org_id currently equals its owner's uid. Reading a custom
+    // claim that doesn't exist throws in Firestore rules (unlike a normal
+    // map lookup), so the "in" check must come first or the uid fallback
+    // below would never actually run.
+    function callerOrgId() {
+      return ('org_id' in request.auth.token) ? request.auth.token.org_id : request.auth.uid;
+    }
+
+    function inOrg(orgId) {
+      return isAuth() && callerOrgId() == orgId;
+    }
+
+    // ---------------------------------------------------------------
+    // 100% of production reads/writes happen server-side through the
+    // FastAPI backend using the Firebase Admin SDK (backend/app/core/
+    // firestore.py), which is NOT subject to these rules. The frontend
+    // only uses Firebase Auth (frontend/src/lib/firebase.js) - it never
+    // imports firebase/firestore, so no client ever reads or writes here
+    // directly today.
+    //
+    // These rules are therefore a break-glass backstop, not the live
+    // authorization mechanism: if the public web API key were ever used
+    // directly against Firestore (misconfigured client, leaked config,
+    // a future feature), this keeps every organization's data walled off
+    // from every other org and from unauthenticated callers, and refuses
+    // every write outright - since a client write would skip the Risk
+    // Engine / Alert Engine entirely and leave records the rest of the
+    // app can't render (e.g. every screen assumes risk_score/risk_status
+    // exist on a flock_check).
+    // ---------------------------------------------------------------
+
+    match /organizations/{orgId} {
+      allow read: if inOrg(orgId);
+      allow write: if false;
+
+      match /farms/{farmId} {
+        allow read: if inOrg(orgId);
+        allow write: if false;
+
+        match /houses/{houseId} {
+          allow read: if inOrg(orgId);
+          allow write: if false;
+
+          match /flocks/{flockId} {
+            allow read: if inOrg(orgId);
+            allow write: if false;
+          }
+
+          match /flock_checks/{checkId} {
+            allow read: if inOrg(orgId);
+            allow write: if false;
+          }
+
+          match /inspections/{inspectionId} {
+            allow read: if inOrg(orgId);
+            allow write: if false;
+          }
+        }
+      }
+
+      match /alerts/{alertId} {
+        allow read: if inOrg(orgId);
+        allow write: if false;
+      }
+    }
+
+    // No `users` collection exists in this app - no user-profile document
+    // is ever created (confirmed: no `.collection("users")` anywhere in
+    // the backend). Add a scoped rule here if that ever changes, rather
+    // than carrying unused scaffolding.
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,16 +1,52 @@
-# React + Vite
+# FlockGuard AI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+AI-native poultry intelligence and early-warning platform. *"Know before it becomes a problem."*
 
-Currently, two official plugins are available:
+FlockGuard is an early-warning and decision-support tool for poultry farmers — it is **not** a disease-diagnosis system.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Monorepo layout
 
-## React Compiler
+```
+flockguard/
+├── frontend/   React + Vite + Tailwind CSS (yarn) — the FlockGuard PWA
+├── backend/    Python + FastAPI — REST API, Risk Engine, Grok/Cloudinary integration
+├── CHECKLIST.md  Build checklist, updated as work lands
+└── README.md
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Frontend
 
-## Expanding the ESLint configuration
+```bash
+cd frontend
+yarn install
+cp .env.example .env   # fill in Firebase + API config
+yarn dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Stack: React, Vite, Tailwind CSS, React Router, Zustand, Recharts, custom SVG AI Health Radar, Firebase Authentication, PWA (vite-plugin-pwa).
+
+## Backend
+
+```bash
+cd backend
+python -m venv .venv
+./.venv/Scripts/activate   # Windows; use `source .venv/bin/activate` on macOS/Linux
+pip install -r requirements.txt
+cp .env.example .env       # fill in Firebase, Cloudinary, Grok config
+uvicorn app.main:app --reload
+```
+
+Stack: FastAPI, Firebase Admin (token verification), Cloud Firestore, Cloudinary, Grok API. The Grok API key lives only on the backend — never in the frontend.
+
+### Architecture
+
+```
+Farmer records Flock Check → FastAPI validates → historical baseline retrieved
+→ Risk Engine (deterministic, Python) scores 0–100 → Alert Engine → Grok explains → Farmer inspects
+```
+
+The Risk Engine is plain Python and deterministic — Grok explains scores, it never invents them.
+
+## Build process
+
+We build FlockGuard against [CHECKLIST.md](CHECKLIST.md), phase by phase. See that file for current status.

@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.7.0
+firebase-admin==6.6.0
+google-cloud-firestore==2.19.0
+cloudinary==1.41.0
+httpx==0.28.1
+python-multipart==0.0.19
