@@ -28,20 +28,22 @@ def _house_name(db: Client, org_id: str, farm_id: str, house_id: str, cache: dic
 
 
 def _recent_alerts_summary(db: Client, org_id: str) -> str:
+    # Filtered in Python rather than with a Firestore `.where(...)` alongside
+    # `.order_by("created_at")` on a different field - that combination needs
+    # a composite index that doesn't exist in this project and would 500.
     alerts = (
         db.collection("organizations")
         .document(org_id)
         .collection("alerts")
-        .where("acknowledged", "==", False)
         .order_by("created_at", direction=Query.DESCENDING)
-        .limit(10)
         .stream()
     )
+    open_alerts = [a for a in (doc.to_dict() for doc in alerts) if not a.get("acknowledged")][:10]
     house_name_cache: dict = {}
     lines = [
         f"- {_house_name(db, org_id, a.get('farm_id'), a.get('house_id'), house_name_cache)}: "
         f"risk {a.get('score')} ({a.get('status')})"
-        for a in (doc.to_dict() for doc in alerts)
+        for a in open_alerts
     ]
     return "\n".join(lines) if lines else "No open alerts."
 

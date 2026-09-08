@@ -14,10 +14,14 @@ def list_alerts(
     org_id: str = Depends(get_current_org_id),
     db: Client = Depends(get_firestore_client),
 ):
+    # Filtered in Python rather than with a Firestore `.where(...)` alongside
+    # `.order_by("created_at")` on a different field - that combination needs
+    # a composite index that doesn't exist in this project and would 500.
     query = alerts_ref(db, org_id).order_by("created_at", direction=Query.DESCENDING)
+    docs = [{"id": doc.id, **doc.to_dict()} for doc in query.stream()]
     if acknowledged is not None:
-        query = query.where("acknowledged", "==", acknowledged)
-    return [{"id": doc.id, **doc.to_dict()} for doc in query.stream()]
+        docs = [doc for doc in docs if doc.get("acknowledged") == acknowledged]
+    return docs
 
 
 @router.post("/{alert_id}/acknowledge")
