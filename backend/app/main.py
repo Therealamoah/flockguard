@@ -12,6 +12,7 @@ from app.api.routes import (
     houses,
     inspections,
     media,
+    debug,
 )
 from app.core.config import settings
 
@@ -44,3 +45,4 @@ app.include_router(analytics.router)
 app.include_router(alerts.router)
 app.include_router(ask.router)
 app.include_router(media.router)
+app.include_router(debug.router)
