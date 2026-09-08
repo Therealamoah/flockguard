@@ -1,5 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import logging
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.requests import Request
+
+
+_logger = logging.getLogger(__name__)
 
 from app.api.routes import (
     alerts,
@@ -17,6 +24,22 @@ from app.api.routes import (
 from app.core.config import settings
 
 app = FastAPI(title="FlockGuard API")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    try:
+        body = await request.body()
+        text = body.decode("utf-8", errors="replace")
+    except Exception:
+        text = "<unavailable>"
+    _logger.warning(
+        "Request validation error: %s path=%s body=%s",
+        exc.errors(),
+        request.url.path,
+        (text[:1000] + "...") if len(text) > 1000 else text,
+    )
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 # Ensure the deployed front-end URL is allowed and make development more
 # convenient by permitting all origins when running in development.
