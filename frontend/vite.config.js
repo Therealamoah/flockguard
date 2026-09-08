@@ -25,4 +25,20 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    // Increase the chunk size warning limit to reduce noisy warnings during
+    // Vercel builds and guide manual splitting for better cacheability.
+    chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react')) return 'vendor_react'
+            if (id.includes('lodash')) return 'vendor_lodash'
+            return 'vendor'
+          }
+        },
+      },
+    },
+  },
 })
