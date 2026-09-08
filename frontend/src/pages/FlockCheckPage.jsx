@@ -283,8 +283,20 @@ export default function FlockCheckPage() {
       setError('No house selected.')
       return
     }
-    if (birdCount === '' || mortality === '') {
-      setError('Bird count and mortality are required.')
+    // Basic client-side validation to avoid sending invalid payloads
+    const birdCountNum = Number(birdCount)
+    const mortalityNum = Number(mortality)
+
+    if (!Number.isFinite(birdCountNum) || birdCount === '' || birdCountNum <= 0) {
+      setError('Please enter a valid bird count (positive integer).')
+      return
+    }
+    if (!Number.isFinite(mortalityNum) || mortalityNum < 0) {
+      setError('Please enter a valid mortality (0 or positive integer).')
+      return
+    }
+    if (mortalityNum > birdCountNum) {
+      setError('Mortality cannot exceed bird count.')
       return
     }
 
@@ -294,8 +306,8 @@ export default function FlockCheckPage() {
 
       const response = await api.flockChecks.submit(currentFarmId, currentHouseId, {
         period,
-        bird_count: Number(birdCount),
-        mortality: Number(mortality),
+        bird_count: birdCountNum,
+        mortality: mortalityNum,
         sick_or_injured: Number(sickOrInjured),
         feed_kg: feedKg === '' ? null : Number(feedKg),
         water_level: waterLevel,

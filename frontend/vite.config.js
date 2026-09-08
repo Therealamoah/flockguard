@@ -28,6 +28,10 @@ export default defineConfig({
   build: {
     // Increase the chunk size warning limit to reduce noisy warnings during
     // Vercel builds and guide manual splitting for better cacheability.
+    // Disable Vite's modulepreload polyfill to avoid "preloaded but not used"
+    // console warnings when a service worker or cross-world scope intercepts
+    // module requests.
+    polyfillModulePreload: false,
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
