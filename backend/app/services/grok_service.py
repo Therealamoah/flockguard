@@ -28,6 +28,15 @@ class GrokService:
 
     async def chat(self, messages: list[dict], model: str | None = None) -> str:
         try:
+            # Log whether an Authorization header is present (never log the key)
+            has_auth = bool(self._client.headers.get("Authorization"))
+            _logger.debug(
+                "Grok request preparing: has_auth_header=%s base_url=%s model=%s",
+                has_auth,
+                self._client.base_url,
+                model or settings.grok_model,
+            )
+
             response = await self._client.post(
                 "/chat/completions",
                 json={
@@ -41,6 +50,18 @@ class GrokService:
             # Log full response body server-side (trimmed) then raise a 502
             text = exc.response.text if exc.response is not None else str(exc)
             _logger.exception("Grok API returned status %s: %s", getattr(exc.response, "status_code", "?"), text[:1000])
+            # Also log the request headers we sent (mask Authorization)
+            try:
+                req_headers = dict(exc.request.headers) if exc.request is not None else {}
+                if "authorization" in (k.lower() for k in req_headers):
+                    # mask the header value
+                    for k in list(req_headers.keys()):
+                        if k.lower() == "authorization":
+                            req_headers[k] = "***MASKED***"
+                _logger.warning("Grok request headers (masked): %s", req_headers)
+            except Exception:
+                _logger.warning("Could not read request headers for Grok error")
+
             raise HTTPException(status_code=502, detail="Upstream Grok API error")
         except httpx.RequestError as exc:
             _logger.exception("Failed to contact Grok API: %s", str(exc))
