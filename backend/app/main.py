@@ -17,9 +17,18 @@ from app.core.config import settings
 
 app = FastAPI(title="FlockGuard API")
 
+# Ensure the deployed front-end URL is allowed and make development more
+# convenient by permitting all origins when running in development.
+allow_origins = list(settings.cors_origins)
+if settings.environment == "development":
+    allow_origins = ["*"]
+else:
+    if settings.app_public_url and settings.app_public_url not in allow_origins:
+        allow_origins.append(settings.app_public_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
