@@ -16,26 +16,31 @@ class GrokService:
     """
 
     def __init__(self) -> None:
-        self._client = httpx.AsyncClient(
-            base_url=settings.grok_api_base_url,
-            headers={
-                "Authorization": f"Bearer {settings.grok_api_key}",
-                "HTTP-Referer": settings.app_public_url,
-                "X-Title": settings.app_name,
-            },
-            timeout=30.0,
-        )
+        # Create a reusable client but build Authorization and other
+        # per-request headers at call-time so logs and errors can show the
+        # current configuration. Note: Settings are still read at startup by
+        # pydantic; updating env vars in the host requires a restart to change
+        # `settings` values.
+        self._client = httpx.AsyncClient(base_url=settings.grok_api_base_url, timeout=30.0)
 
     async def chat(self, messages: list[dict], model: str | None = None) -> str:
         try:
-            # Log whether an Authorization header is present (never log the key)
-            has_auth = bool(self._client.headers.get("Authorization"))
+            # Build per-request headers (do not log the key itself).
+            auth_header = f"Bearer {settings.grok_api_key}" if settings.grok_api_key else None
+            has_auth = bool(auth_header)
             _logger.debug(
                 "Grok request preparing: has_auth_header=%s base_url=%s model=%s",
                 has_auth,
                 self._client.base_url,
                 model or settings.grok_model,
             )
+
+            headers = {
+                "HTTP-Referer": settings.app_public_url,
+                "X-Title": settings.app_name,
+            }
+            if auth_header:
+                headers["Authorization"] = auth_header
 
             response = await self._client.post(
                 "/chat/completions",
@@ -44,6 +49,7 @@ class GrokService:
                     "messages": messages,
                     "max_tokens": settings.grok_max_tokens,
                 },
+                headers=headers,
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
