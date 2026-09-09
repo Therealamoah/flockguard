@@ -44,5 +44,22 @@ class Settings(BaseSettings):
     app_public_url: str = "http://localhost:5173"
     app_name: str = "FlockGuard AI"
 
+    # Rate limits, as slowapi/limits strings (e.g. "20/minute"). Kept
+    # generous enough not to get in a real farmer's way during normal use
+    # (a handful of Flock Checks a day, occasional AI questions) while
+    # bounding the cost/abuse surface of the AI and upload endpoints.
+    rate_limit_ask: str = "15/minute"
+    rate_limit_media_upload: str = "30/minute"
+    rate_limit_flock_check: str = "30/minute"
+
+    # Upload limits enforced server-side in app/services/media_validation.py
+    # - never trust the frontend or the file extension alone.
+    max_image_upload_mb: float = 8.0
+    max_audio_upload_mb: float = 20.0
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() == "production"
+
 
 settings = Settings()

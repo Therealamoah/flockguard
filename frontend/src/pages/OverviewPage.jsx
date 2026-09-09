@@ -8,7 +8,7 @@ import StatCard from '../components/StatCard'
 import { statusMeta } from '../lib/risk'
 import { greetingFor, formatDateLong, formatTime, timeAgo, formatClock } from '../lib/time'
 import { displayName } from '../lib/format'
-import { ShieldCheck, Bird, Warehouse, Bell, ClipboardList, Sun, Moon, Loader2 } from 'lucide-react'
+import { ShieldCheck, Bird, Warehouse, Bell, ClipboardList, Sun, Moon, Loader2, Sparkles } from 'lucide-react'
 
 function useClock() {
   const [now, setNow] = useState(() => new Date())
@@ -29,6 +29,7 @@ export default function OverviewPage() {
   const [totalBirds, setTotalBirds] = useState(null)
   const [activeFlocks, setActiveFlocks] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [brief, setBrief] = useState(null)
 
   useEffect(() => {
     if (!currentFarmId) return
@@ -38,7 +39,7 @@ export default function OverviewPage() {
       setIsLoading(true)
       const [compareData, alertsData, checksByHouse, flocksByHouse] = await Promise.all([
         api.analytics.compareHouses(currentFarmId),
-        api.alerts.list(false),
+        api.alerts.list({ resolved: false }),
         Promise.all(
           houses.map((h) =>
             api.flockChecks
@@ -116,6 +117,21 @@ export default function OverviewPage() {
     }
   }, [currentFarmId, houses])
 
+  useEffect(() => {
+    if (!currentFarmId) return
+    let cancelled = false
+    // Deterministic first, AI-reworded on top - never blocks or breaks the
+    // dashboard if Grok is unavailable (see backend app/api/routes/ask.py::ai_daily_brief).
+    api.askDailyBrief(currentFarmId)
+      .then((data) => {
+        if (!cancelled) setBrief(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [currentFarmId])
+
   const checkedHouses = compare.filter((h) => h.risk_score !== null)
   const farmHealth = checkedHouses.length
     ? Math.round(100 - checkedHouses.reduce((sum, h) => sum + h.risk_score, 0) / checkedHouses.length)
@@ -160,6 +176,16 @@ export default function OverviewPage() {
           </div>
         </div>
       </div>
+
+      {brief?.available ? (
+        <div className="mt-6 rounded-xl border border-ai/20 bg-ai/5 p-5">
+          <div className="flex items-center gap-2 text-sm font-bold text-navy">
+            <Sparkles size={14} className="text-ai" />
+            Daily Brief
+          </div>
+          <p className="mt-2 text-sm text-navy/70">{brief.ai_text || brief.brief_text}</p>
+        </div>
+      ) : null}
 
       <div className="mt-6 rounded-xl border border-hairline bg-surface p-5 shadow-sm">
         {worst && worst.risk_score !== null ? (

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Sparkles, Send, Bot } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuthStore } from '../store/useAuthStore'
+import { useAppStore } from '../store/useAppStore'
 import { displayName, initialsFor } from '../lib/format'
 
 const SUGGESTIONS = [
@@ -11,8 +12,12 @@ const SUGGESTIONS = [
   'Has mortality increased this week?',
 ]
 
+const AI_UNAVAILABLE_MESSAGE =
+  "FlockGuard AI is temporarily unavailable right now. Your farm monitoring, Risk Engine, Radar and alerts are still working normally - please try asking again shortly."
+
 export default function AskFlockGuardPage() {
   const { user } = useAuthStore()
+  const { currentFarmId, houses } = useAppStore()
   const firstName = displayName(user).split(' ')[0]
   const [messages, setMessages] = useState([
     {
@@ -22,6 +27,7 @@ export default function AskFlockGuardPage() {
   ])
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [houseId, setHouseId] = useState('')
 
   async function send(question) {
     const text = question ?? input
@@ -31,13 +37,10 @@ export default function AskFlockGuardPage() {
     setInput('')
     setIsSending(true)
     try {
-      const { answer } = await api.ask(text)
+      const { answer } = await api.ask(text, { farmId: currentFarmId, houseId: houseId || undefined })
       setMessages((prev) => [...prev, { role: 'assistant', content: answer }])
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: "Sorry, I couldn't reach FlockGuard's AI service. Please try again." },
-      ])
+      setMessages((prev) => [...prev, { role: 'assistant', content: AI_UNAVAILABLE_MESSAGE }])
     } finally {
       setIsSending(false)
     }
@@ -45,14 +48,30 @@ export default function AskFlockGuardPage() {
 
   return (
     <div className="mx-auto flex h-[calc(100vh-65px)] max-w-4xl flex-col p-6">
-      <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ai/10 text-ai">
-          <Sparkles size={20} />
-        </span>
-        <div>
-          <h1 className="font-display text-2xl font-extrabold text-navy">Ask FlockGuard</h1>
-          <p className="text-sm text-navy/60">Your farm intelligence assistant.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ai/10 text-ai">
+            <Sparkles size={20} />
+          </span>
+          <div>
+            <h1 className="font-display text-2xl font-extrabold text-navy">Ask FlockGuard</h1>
+            <p className="text-sm text-navy/60">Your farm intelligence assistant.</p>
+          </div>
         </div>
+        {houses.length > 0 ? (
+          <select
+            value={houseId}
+            onChange={(e) => setHouseId(e.target.value)}
+            className="rounded-lg border border-hairline bg-surface px-3 py-2 text-xs font-medium text-navy outline-none focus:border-ai"
+          >
+            <option value="">Whole farm</option>
+            {houses.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">

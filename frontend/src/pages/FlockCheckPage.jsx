@@ -258,18 +258,22 @@ export default function FlockCheckPage() {
     }
   }
 
-  async function generateExplanation(response, house_) {
+  async function generateExplanation(response) {
     setExplanationLoading(true)
     try {
-      const factorsText = response.risk_factors.map((f) => `${f.label} (${Math.round(f.points)}%)`).join(', ')
-      const { answer } = await api.ask(
-        `In 2-3 sentences, explain why ${house_?.name || 'this house'} just scored a Flock Check risk of ` +
-          `${response.risk_score} (${response.risk_status}). Factors detected: ${factorsText || 'none'}. ` +
-          'Describe the pattern that triggered this, not a disease diagnosis.'
+      // Grounded in the check's own persisted risk data (previous score,
+      // risk_change, morning/evening comparison, open alert) rather than a
+      // hand-built prompt - see app/api/routes/ask.py::explain_check.
+      const { available, explanation: text } = await api.askExplain(currentFarmId, currentHouseId, response.id)
+      setExplanation(
+        available
+          ? text
+          : "FlockGuard AI explanations are temporarily unavailable. Your farm monitoring and risk calculations are still working."
       )
-      setExplanation(answer)
     } catch {
-      setExplanation('')
+      setExplanation(
+        "FlockGuard AI explanations are temporarily unavailable. Your farm monitoring and risk calculations are still working."
+      )
     } finally {
       setExplanationLoading(false)
     }
@@ -328,7 +332,7 @@ export default function FlockCheckPage() {
       setPriorChecks(fetchedPriorChecks)
 
       if (response.risk_status !== 'normal') {
-        generateExplanation(response, house)
+        generateExplanation(response)
       }
     } catch {
       setError('Could not submit this Flock Check. Please try again.')
@@ -364,8 +368,57 @@ export default function FlockCheckPage() {
             <div className="mt-3 flex justify-center">
               <StatusBadge status={result.risk_status} />
             </div>
+            {result.previous_risk_score != null ? (
+              <p className="mt-2 text-sm font-semibold text-navy/60">
+                {result.previous_risk_score} → {result.risk_score}
+                <span style={{ color: meta.color }}>
+                  {' '}
+                  ({result.risk_change > 0 ? '+' : ''}
+                  {result.risk_change})
+                </span>
+              </p>
+            ) : null}
           </div>
         </div>
+
+        {result.morning_comparison ? (
+          <div className="mt-4 rounded-xl border border-hairline bg-surface p-5 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-forest/10 text-forest">
+                <Sun size={14} />
+              </span>
+              <h2 className="text-sm font-bold text-navy">Morning vs {result.period === 'emergency' ? 'this check' : 'Evening'}</h2>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-xs text-navy/40">Morning</p>
+                <p className="font-display text-lg font-extrabold text-navy">{result.morning_comparison.morning_risk_score}</p>
+              </div>
+              <div>
+                <p className="text-xs text-navy/40">Now</p>
+                <p className="font-display text-lg font-extrabold text-navy">{result.morning_comparison.evening_risk_score}</p>
+              </div>
+              <div>
+                <p className="text-xs text-navy/40">Change</p>
+                <p className="font-display text-lg font-extrabold" style={{ color: meta.color }}>
+                  {result.morning_comparison.risk_change > 0 ? '+' : ''}
+                  {result.morning_comparison.risk_change}
+                </p>
+              </div>
+            </div>
+            <ul className="mt-4 space-y-1.5 text-sm text-navy/70">
+              <li>Mortality change: {result.morning_comparison.mortality_change > 0 ? '+' : ''}{result.morning_comparison.mortality_change}</li>
+              {result.morning_comparison.feed_change != null ? (
+                <li>
+                  Feed change: {result.morning_comparison.feed_change > 0 ? '+' : ''}
+                  {result.morning_comparison.feed_change}kg
+                </li>
+              ) : null}
+              {result.morning_comparison.water_changed ? <li>Water level changed since morning</li> : null}
+              {result.morning_comparison.activity_changed ? <li>Activity level changed since morning</li> : null}
+            </ul>
+          </div>
+        ) : null}
 
         <div className="mt-4 rounded-xl border border-hairline bg-surface p-5 shadow-sm">
           <div className="flex items-center gap-2">

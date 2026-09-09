@@ -7,3 +7,7 @@ google-cloud-firestore==2.19.0
 cloudinary==1.41.0
 httpx==0.28.1
 python-multipart==0.0.19
+slowapi==0.1.10
+
+# Dev/test only
+pytest==9.1.1

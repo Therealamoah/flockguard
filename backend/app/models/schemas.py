@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -71,11 +72,36 @@ class FlockCheckResponse(BaseModel):
     risk_status: str
     risk_factors: list[RiskFactor]
     notes: str | None = None
+    # Added for risk-history/trend display ("58 -> 81, +23") without a
+    # second Firestore scan. None on a house's first-ever check.
+    previous_risk_score: int | None = None
+    risk_change: int | None = None
+    # Structured Morning-vs-Evening diff (see app/services/comparison_service.py).
+    # Present only on evening/emergency checks that had a same-day Morning
+    # Check to compare against; None otherwise (never an error).
+    morning_comparison: dict[str, Any] | None = None
 
 
 class AskRequest(BaseModel):
     question: str
     house_id: str | None = None
+    farm_id: str | None = None
+
+
+class ExplainCheckRequest(BaseModel):
+    farm_id: str
+    house_id: str
+    check_id: str
+
+
+class FindingCategory(str, Enum):
+    EVERYTHING_NORMAL = "everything_normal"
+    WATER_ISSUE = "water_issue"
+    FEED_ISSUE = "feed_issue"
+    VENTILATION_ISSUE = "ventilation_issue"
+    SICK_BIRDS_OBSERVED = "sick_birds_observed"
+    BEHAVIOUR_ISSUE = "behaviour_issue"
+    OTHER = "other"
 
 
 class FlockCreate(BaseModel):
@@ -91,6 +117,11 @@ class FlockUpdate(BaseModel):
 
 class InspectionCreate(BaseModel):
     findings: str
+    # New, all optional so existing callers/older clients keep working
+    # unchanged - see CHECKLIST/audit Phase 7.
+    finding_category: FindingCategory | None = None
+    action_taken: str | None = None
+    started_at: datetime | None = None
     alert_id: str | None = None
     photo_url: str | None = None
     photo_public_id: str | None = None

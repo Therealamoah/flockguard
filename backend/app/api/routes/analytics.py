@@ -3,7 +3,10 @@ from google.cloud.firestore import Client, Query
 
 from app.core.deps import get_current_org_id
 from app.core.firestore import get_firestore_client
-from app.core.refs import flock_checks_ref, houses_ref
+from app.core.refs import flock_checks_ref
+from app.services.daily_brief_service import build_daily_brief
+from app.services.farm_context_service import get_farm_status, get_flock_history, get_house_comparison, list_houses
+from app.services.trend_service import detect_trends
 
 router = APIRouter(prefix="/farms/{farm_id}", tags=["analytics"])
 
@@ -51,27 +54,41 @@ def compare_houses(
     db: Client = Depends(get_firestore_client),
 ):
     """Latest risk score per house in a farm - powers the AI Health Radar
-    and cross-house comparison views."""
-    houses = list(houses_ref(db, org_id, farm_id).stream())
+    and cross-house comparison views. Shared with Ask FlockGuard's farm
+    context (app/services/farm_context_service.py::get_house_comparison)
+    so the two can never disagree."""
+    return get_house_comparison(db, org_id, farm_id)
 
-    results = []
-    for house_doc in houses:
-        latest = (
-            flock_checks_ref(db, org_id, farm_id, house_doc.id)
-            .order_by("recorded_at", direction=Query.DESCENDING)
-            .limit(1)
-            .stream()
-        )
-        latest_check = next((doc.to_dict() for doc in latest), None)
-        results.append(
-            {
-                "house_id": house_doc.id,
-                "house_name": house_doc.to_dict().get("name"),
-                "risk_score": latest_check.get("risk_score") if latest_check else None,
-                "risk_status": latest_check.get("risk_status") if latest_check else None,
-                "last_checked_at": latest_check.get("recorded_at") if latest_check else None,
-            }
-        )
 
-    results.sort(key=lambda r: (r["risk_score"] is None, -(r["risk_score"] or 0)))
-    return results
+@router.get("/analytics/trend-insights")
+def trend_insights(
+    farm_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: Client = Depends(get_firestore_client),
+):
+    """Deterministic, proactive pattern detection across every house in the
+    farm (app/services/trend_service.py) - e.g. 3 consecutive checks of
+    declining feed. Grok never decides whether a trend exists; Python does.
+    """
+    insights = []
+    for house in list_houses(db, org_id, farm_id):
+        history = get_flock_history(db, org_id, farm_id, house["id"], limit=3)
+        insights.extend(detect_trends(house["id"], house.get("name") or house["id"], history))
+    return insights
+
+
+@router.get("/daily-brief")
+def daily_brief(
+    farm_id: str,
+    org_id: str = Depends(get_current_org_id),
+    db: Client = Depends(get_firestore_client),
+):
+    """Deterministic daily summary ('3 of 4 houses stable, House C needs
+    attention...') built entirely from real data - never itself AI-generated,
+    so it works even when Grok is unavailable. See app/api/routes/ask.py's
+    POST /ask/daily-brief for an optional, best-effort AI-reworded version.
+    """
+    status = get_farm_status(db, org_id, farm_id)
+    if not status:
+        return {"available": False, "reason": "farm_not_found"}
+    return {"available": True, **build_daily_brief(status)}

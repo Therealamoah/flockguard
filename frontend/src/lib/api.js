@@ -48,22 +48,38 @@ export const api = {
     list: (farmId, houseId) => get(`/farms/${farmId}/houses/${houseId}/flock-checks`),
     submit: (farmId, houseId, data) => post(`/farms/${farmId}/houses/${houseId}/flock-checks`, data),
     get: (farmId, houseId, checkId) => get(`/farms/${farmId}/houses/${houseId}/flock-checks/${checkId}`),
+    comparison: (farmId, houseId, checkId) =>
+      get(`/farms/${farmId}/houses/${houseId}/flock-checks/${checkId}/comparison`),
   },
   inspections: {
     list: (farmId, houseId) => get(`/farms/${farmId}/houses/${houseId}/inspections`),
     create: (farmId, houseId, data) => post(`/farms/${farmId}/houses/${houseId}/inspections`, data),
   },
   alerts: {
-    list: (acknowledged) =>
-      get(`/alerts${acknowledged !== undefined ? `?acknowledged=${acknowledged}` : ''}`),
+    // `resolved` is the meaningful "is this actually handled" filter; `acknowledged`
+    // ("has a farmer seen it") is kept for backward compatibility. Pass either/both,
+    // e.g. api.alerts.list({ resolved: false }).
+    list: ({ acknowledged, resolved } = {}) => {
+      const params = new URLSearchParams()
+      if (acknowledged !== undefined) params.set('acknowledged', acknowledged)
+      if (resolved !== undefined) params.set('resolved', resolved)
+      const qs = params.toString()
+      return get(`/alerts${qs ? `?${qs}` : ''}`)
+    },
     acknowledge: (alertId) => post(`/alerts/${alertId}/acknowledge`),
+    resolve: (alertId) => post(`/alerts/${alertId}/resolve`),
   },
   analytics: {
     houseTrends: (farmId, houseId, limit) =>
       get(`/farms/${farmId}/houses/${houseId}/analytics/trends${limit ? `?limit=${limit}` : ''}`),
     compareHouses: (farmId) => get(`/farms/${farmId}/analytics/compare-houses`),
+    trendInsights: (farmId) => get(`/farms/${farmId}/analytics/trend-insights`),
+    dailyBrief: (farmId) => get(`/farms/${farmId}/daily-brief`),
   },
-  ask: (question) => post('/ask', { question }),
+  ask: (question, { houseId, farmId } = {}) => post('/ask', { question, house_id: houseId, farm_id: farmId }),
+  askExplain: (farmId, houseId, checkId) =>
+    post('/ask/explain', { farm_id: farmId, house_id: houseId, check_id: checkId }),
+  askDailyBrief: (farmId) => get(`/ask/daily-brief${farmId ? `?farm_id=${farmId}` : ''}`),
   media: {
     upload: (file, resourceType = 'image') => {
       const form = new FormData()

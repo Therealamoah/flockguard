@@ -5,7 +5,7 @@ from google.cloud.firestore import Client
 
 from app.core.deps import get_current_org_id
 from app.core.firestore import get_firestore_client
-from app.core.refs import flocks_ref
+from app.core.refs import flocks_ref, houses_ref
 from app.models.schemas import FlockCreate, FlockStatus, FlockUpdate
 
 router = APIRouter(prefix="/farms/{farm_id}/houses/{house_id}/flocks", tags=["flocks"])
@@ -29,6 +29,8 @@ def create_flock(
     org_id: str = Depends(get_current_org_id),
     db: Client = Depends(get_firestore_client),
 ):
+    if not houses_ref(db, org_id, farm_id).document(house_id).get().exists:
+        raise HTTPException(status_code=404, detail="House not found")
     doc_ref = flocks_ref(db, org_id, farm_id, house_id).document()
     data = {
         **payload.model_dump(mode="json"),

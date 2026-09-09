@@ -80,7 +80,7 @@ export default function AppLayout() {
   useEffect(() => {
     if (!currentFarmId) return
     let cancelled = false
-    api.alerts.list(false).then((alerts) => {
+    api.alerts.list({ resolved: false }).then((alerts) => {
       if (!cancelled) setOpenAlertCount(alerts.length)
     })
     return () => {

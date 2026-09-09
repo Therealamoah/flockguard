@@ -18,7 +18,7 @@ export default function AlertsPage() {
 
   async function load() {
     setIsLoading(true)
-    const data = await api.alerts.list(filter === 'open' ? false : filter === 'resolved' ? true : undefined)
+    const data = await api.alerts.list({ resolved: filter === 'open' ? false : filter === 'resolved' ? true : undefined })
     setAlerts(data)
     setIsLoading(false)
   }
@@ -30,7 +30,16 @@ export default function AlertsPage() {
 
   async function handleAcknowledge(id) {
     await api.alerts.acknowledge(id)
-    setAlerts((prev) => prev.filter((a) => a.id !== id))
+    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, acknowledged: true } : a)))
+  }
+
+  async function handleResolve(id) {
+    await api.alerts.resolve(id)
+    if (filter === 'open') {
+      setAlerts((prev) => prev.filter((a) => a.id !== id))
+    } else {
+      setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, resolved: true } : a)))
+    }
   }
 
   return (
@@ -84,17 +93,33 @@ export default function AlertsPage() {
                     </span>
                     <div>
                       <p className="font-display text-base font-bold text-navy">{house?.name || alert.house_id}</p>
-                      <div className="mt-1">
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
                         <StatusBadge status={alert.status} score={alert.score} />
+                        {alert.previous_risk_score != null ? (
+                          <span className="text-xs font-semibold text-navy/50">
+                            {alert.previous_risk_score} → {alert.score}
+                            {alert.risk_change != null ? ` (${alert.risk_change > 0 ? '+' : ''}${alert.risk_change})` : ''}
+                          </span>
+                        ) : null}
+                        {alert.occurrence_count > 1 ? (
+                          <span className="rounded-full bg-hairline/70 px-2 py-0.5 text-xs font-semibold text-navy/60">
+                            Seen {alert.occurrence_count}×
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-navy/40">{timeAgo(alert.created_at)}</p>
-                    {alert.acknowledged ? (
+                    {alert.resolved ? (
                       <span className="mt-2 flex items-center gap-1 text-xs font-semibold text-normal">
                         <Check size={12} />
                         Resolved
+                      </span>
+                    ) : alert.acknowledged ? (
+                      <span className="mt-2 flex items-center gap-1 text-xs font-semibold text-navy/50">
+                        <Check size={12} />
+                        Seen
                       </span>
                     ) : null}
                   </div>
@@ -125,10 +150,19 @@ export default function AlertsPage() {
                   {!alert.acknowledged ? (
                     <button
                       onClick={() => handleAcknowledge(alert.id)}
+                      className="flex items-center gap-1.5 rounded-lg border border-hairline px-3 py-1.5 text-xs font-semibold text-navy hover:bg-forest/5"
+                    >
+                      <Check size={13} />
+                      Acknowledge
+                    </button>
+                  ) : null}
+                  {!alert.resolved ? (
+                    <button
+                      onClick={() => handleResolve(alert.id)}
                       className="flex items-center gap-1.5 rounded-lg bg-forest px-3 py-1.5 text-xs font-semibold text-white hover:bg-forest-dark"
                     >
                       <Stethoscope size={13} />
-                      Acknowledge
+                      Resolve
                     </button>
                   ) : null}
                 </div>

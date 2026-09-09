@@ -22,6 +22,8 @@ import {
   Moon,
   Siren,
   Loader2,
+  Sparkles,
+  TrendingUp as TrendUpIcon,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
@@ -35,6 +37,16 @@ import { dayLabel } from '../lib/format'
 
 const PERIOD_ICON = { morning: Sun, evening: Moon, emergency: Siren }
 
+const FINDING_CATEGORIES = [
+  { value: 'everything_normal', label: 'Everything normal' },
+  { value: 'water_issue', label: 'Water problem' },
+  { value: 'feed_issue', label: 'Feed problem' },
+  { value: 'ventilation_issue', label: 'Ventilation problem' },
+  { value: 'sick_birds_observed', label: 'Sick birds observed' },
+  { value: 'behaviour_issue', label: 'Behaviour problem' },
+  { value: 'other', label: 'Other' },
+]
+
 export default function HouseDetailPage() {
   const { houseId } = useParams()
   const { currentFarmId, houses } = useAppStore()
@@ -46,12 +58,19 @@ export default function HouseDetailPage() {
   const [checks, setChecks] = useState([])
   const [flock, setFlock] = useState(null)
   const [openAlert, setOpenAlert] = useState(null)
+  const [insights, setInsights] = useState([])
+  const [inspections, setInspections] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
   const [showInspection, setShowInspection] = useState(Boolean(location.state?.openInspection))
   const [findings, setFindings] = useState('')
+  const [findingCategory, setFindingCategory] = useState('')
+  const [actionTaken, setActionTaken] = useState('')
   const [isSubmittingInspection, setIsSubmittingInspection] = useState(false)
   const [inspectionDone, setInspectionDone] = useState(false)
+
+  const [explanation, setExplanation] = useState('')
+  const [explanationLoading, setExplanationLoading] = useState(false)
 
   useEffect(() => {
     if (!currentFarmId || !houseId) return
@@ -60,13 +79,18 @@ export default function HouseDetailPage() {
       api.analytics.houseTrends(currentFarmId, houseId),
       api.flockChecks.list(currentFarmId, houseId),
       api.flocks.list(currentFarmId, houseId),
-      api.alerts.list(false),
-    ]).then(([trendData, checkData, flockData, alertData]) => {
+      api.alerts.list({ resolved: false }),
+      api.analytics.trendInsights(currentFarmId).catch(() => []),
+      api.inspections.list(currentFarmId, houseId).catch(() => []),
+    ]).then(([trendData, checkData, flockData, alertData, insightData, inspectionData]) => {
       if (cancelled) return
       setTrends(trendData)
       setChecks(checkData)
       setFlock(flockData.find((f) => f.status === 'active') || flockData[0] || null)
       setOpenAlert(alertData.find((a) => a.house_id === houseId) || null)
+      setInsights((insightData || []).filter((i) => i.house_id === houseId))
+      setInspections(inspectionData || [])
+      setExplanation('')
       setIsLoading(false)
     })
     return () => {
@@ -75,7 +99,10 @@ export default function HouseDetailPage() {
   }, [currentFarmId, houseId])
 
   const latest = checks[0]
-  const previousScore = checks[1]?.risk_score
+  // Prefer the value the backend persisted at submission time; fall back to
+  // comparing against the previous check client-side for older records that
+  // predate that field.
+  const previousScore = latest?.previous_risk_score ?? checks[1]?.risk_score
 
   function handlePerformCheck() {
     useAppStore.getState().selectHouse(houseId)
@@ -86,14 +113,37 @@ export default function HouseDetailPage() {
     e.preventDefault()
     setIsSubmittingInspection(true)
     try {
-      await api.inspections.create(currentFarmId, houseId, {
+      const created = await api.inspections.create(currentFarmId, houseId, {
         findings,
+        finding_category: findingCategory || null,
+        action_taken: actionTaken || null,
         alert_id: openAlert?.id ?? null,
       })
       setInspectionDone(true)
       setShowInspection(false)
+      setOpenAlert(null)
+      setInspections((prev) => [created, ...prev])
     } finally {
       setIsSubmittingInspection(false)
+    }
+  }
+
+  async function handleExplain() {
+    if (!latest) return
+    setExplanationLoading(true)
+    try {
+      const { available, explanation: text } = await api.askExplain(currentFarmId, houseId, latest.id)
+      setExplanation(
+        available
+          ? text
+          : "FlockGuard AI explanations are temporarily unavailable. Your farm monitoring and risk calculations are still working."
+      )
+    } catch {
+      setExplanation(
+        "FlockGuard AI explanations are temporarily unavailable. Your farm monitoring and risk calculations are still working."
+      )
+    } finally {
+      setExplanationLoading(false)
     }
   }
 
@@ -180,6 +230,20 @@ export default function HouseDetailPage() {
         />
       </div>
 
+      {insights.length > 0 ? (
+        <div className="mt-6 rounded-xl border border-watch/30 bg-watch/5 p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-navy">
+            <TrendUpIcon size={15} className="text-watch" />
+            Proactive insight
+          </div>
+          <ul className="mt-2 space-y-1 text-sm text-navy/70">
+            {insights.map((insight) => (
+              <li key={insight.type}>{insight.message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {!latest ? (
         <p className="mt-6 text-sm text-navy/50">
           No Flock Checks recorded yet.{' '}
@@ -192,17 +256,32 @@ export default function HouseDetailPage() {
         <>
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl border border-hairline bg-surface p-5 shadow-sm">
-              <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-forest/10 text-forest">
-                  <Stethoscope size={14} />
-                </span>
-                <h2 className="text-sm font-bold text-navy">
-                  {latest.risk_factors.length > 0 ? 'Why this house is flagged' : 'Latest check summary'}
-                </h2>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-forest/10 text-forest">
+                    <Stethoscope size={14} />
+                  </span>
+                  <h2 className="text-sm font-bold text-navy">
+                    {latest.risk_factors.length > 0 ? 'Why this house is flagged' : 'Latest check summary'}
+                  </h2>
+                </div>
+                {latest.risk_status !== 'normal' ? (
+                  <button
+                    onClick={handleExplain}
+                    disabled={explanationLoading}
+                    className="flex shrink-0 items-center gap-1 rounded-full border border-ai/30 px-2.5 py-1 text-xs font-semibold text-ai hover:bg-ai/10 disabled:opacity-60"
+                  >
+                    <Sparkles size={12} />
+                    {explanationLoading ? 'Asking...' : 'Why?'}
+                  </button>
+                ) : null}
               </div>
               <div className="mt-4">
                 <FactorBars factors={latest.risk_factors} />
               </div>
+              {explanation ? (
+                <p className="mt-4 border-t border-hairline pt-4 text-sm text-navy/70">{explanation}</p>
+              ) : null}
             </div>
 
             <div className="rounded-xl border border-hairline bg-surface p-5 shadow-sm">
@@ -242,12 +321,36 @@ export default function HouseDetailPage() {
 
               {showInspection ? (
                 <form onSubmit={handleSubmitInspection} className="mt-3 space-y-2 border-t border-hairline pt-3">
+                  <p className="text-xs font-semibold text-navy/50">What did you find?</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {FINDING_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat.value}
+                        type="button"
+                        onClick={() => setFindingCategory(cat.value)}
+                        className={[
+                          'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                          findingCategory === cat.value
+                            ? 'border-forest bg-forest/10 text-forest'
+                            : 'border-hairline text-navy/60 hover:bg-forest/5',
+                        ].join(' ')}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
                   <textarea
                     required
                     value={findings}
                     onChange={(e) => setFindings(e.target.value)}
                     placeholder="What did you find during inspection?"
                     rows={3}
+                    className="w-full rounded-lg border border-hairline px-3 py-2 text-sm outline-none focus:border-forest"
+                  />
+                  <input
+                    value={actionTaken}
+                    onChange={(e) => setActionTaken(e.target.value)}
+                    placeholder="Action taken (optional)"
                     className="w-full rounded-lg border border-hairline px-3 py-2 text-sm outline-none focus:border-forest"
                   />
                   <button
@@ -257,6 +360,9 @@ export default function HouseDetailPage() {
                   >
                     {isSubmittingInspection ? 'Saving...' : 'Save Inspection'}
                   </button>
+                  {openAlert ? (
+                    <p className="text-xs text-navy/40">Saving this will resolve the open alert for this house.</p>
+                  ) : null}
                 </form>
               ) : null}
             </div>
@@ -294,6 +400,31 @@ export default function HouseDetailPage() {
               })}
             </div>
           </div>
+
+          {inspections.length > 0 ? (
+            <div className="mt-4 rounded-xl border border-hairline bg-surface p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-navy">Recent Inspections</h2>
+              <div className="mt-3 space-y-3">
+                {inspections.slice(0, 5).map((insp) => (
+                  <div key={insp.id} className="border-b border-hairline pb-3 last:border-0 last:pb-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold capitalize text-navy">
+                        {(insp.finding_category || 'inspection').replaceAll('_', ' ')}
+                      </span>
+                      <span className="text-xs text-navy/40">{timeAgo(insp.created_at)}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-navy/70">{insp.findings}</p>
+                    {insp.action_taken ? (
+                      <p className="mt-1 text-xs text-navy/50">Action: {insp.action_taken}</p>
+                    ) : null}
+                    {insp.performed_by ? (
+                      <p className="mt-1 text-xs text-navy/40">By {insp.performed_by}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </>
       )}
     </div>
