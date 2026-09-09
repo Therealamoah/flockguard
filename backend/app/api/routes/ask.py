@@ -60,5 +60,18 @@ async def ask_flockguard(
         {"role": "system", "content": f"Current open alerts:\n{context}"},
         {"role": "user", "content": payload.question},
     ]
-    answer = await grok_service.chat(messages)
-    return {"answer": answer}
+    try:
+        answer = await grok_service.chat(messages)
+        return {"answer": answer}
+    except Exception as exc:  # pragma: no cover - top-level safety for runtime
+        # Log and re-raise structured HTTP errors so the gateway returns JSON
+        import logging
+
+        logging.getLogger(__name__).exception("/ask handler failed: %s", str(exc))
+        # If it's an HTTPException from FastAPI, let it propagate for proper status
+        from fastapi import HTTPException as _HTTPException
+
+        if isinstance(exc, _HTTPException):
+            raise
+        # For unexpected errors, raise a generic 500 with a short message
+        raise _HTTPException(status_code=500, detail="Internal server error while processing AI request")
