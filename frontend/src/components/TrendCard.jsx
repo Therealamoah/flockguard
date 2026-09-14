@@ -5,7 +5,7 @@ function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
     <div className="rounded-lg border border-hairline bg-surface px-3 py-2 text-xs shadow-md">
-      <p className="text-navy/50">
+      <p className="text-secondary">
         {new Date(label).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
       </p>
       <p className="mt-0.5 font-semibold text-navy">{payload[0].value}</p>
@@ -22,7 +22,7 @@ export default function TrendCard({ title, data, dataKey, color, Icon, goodDirec
   const delta = latest != null && first != null ? latest - first : null
   const gradientId = `trend-grad-${dataKey}`
 
-  let deltaColor = 'text-navy/40'
+  let deltaColor = 'text-muted'
   if (delta && goodDirection) {
     const isGood = (goodDirection === 'up' && delta > 0) || (goodDirection === 'down' && delta < 0)
     deltaColor = isGood ? 'text-normal' : 'text-critical'
@@ -41,7 +41,7 @@ export default function TrendCard({ title, data, dataKey, color, Icon, goodDirec
               <Icon size={14} />
             </span>
           ) : null}
-          <p className="text-xs font-semibold text-navy/60">{title}</p>
+          <p className="text-xs font-semibold text-secondary">{title}</p>
         </div>
         {latest != null ? (
           <div className="flex items-center gap-2">

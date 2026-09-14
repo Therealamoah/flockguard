@@ -1,18 +1,28 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from google.cloud.firestore import Client, Query
 
+from app.agent.agent_router import should_investigate_check
+from app.agent.event_handlers import investigate_flock_check
 from app.core.config import settings
 from app.core.deps import get_current_org_id
 from app.core.firestore import get_firestore_client
 from app.core.limiter import limiter
-from app.core.refs import flock_checks_ref, flocks_ref, houses_ref
+from app.core.refs import farms_ref, flock_checks_ref, flocks_ref, houses_ref
 from app.models.schemas import FlockCheckCreate, FlockCheckResponse, FlockStatus
 from app.risk_engine.engine import compute_risk
 from app.risk_engine.models import FlockCheckInput, HouseBaseline
 from app.services.alert_engine import sync_alert_for_check
 from app.services.comparison_service import build_morning_evening_comparison
+
+# Maps a check's period to the agent trigger name it fires -
+# app/agent/agent_router.py decides which skill (if any) responds to each.
+_TRIGGER_BY_PERIOD = {
+    "morning": "morning_check_submitted",
+    "evening": "evening_check_submitted",
+    "emergency": "emergency_check_submitted",
+}
 
 router = APIRouter(prefix="/farms/{farm_id}/houses/{house_id}/flock-checks", tags=["flock-checks"])
 
@@ -53,10 +63,24 @@ def _active_flock_id(db: Client, org_id: str, farm_id: str, house_id: str) -> st
     return next((doc.id for doc in docs), None)
 
 
+def _get_farm(db: Client, org_id: str, farm_id: str) -> dict:
+    """One read used for both the farm's timezone (comparison_service treats
+    a missing one as UTC, matching this app's behavior before farm
+    timezones existed) and its AI preferences (Settings > FlockGuard
+    Intelligence > Proactive Insights) - avoids fetching the farm doc twice."""
+    doc = farms_ref(db, org_id).document(farm_id).get()
+    return doc.to_dict() if doc.exists else {}
+
+
+def _proactive_investigation_enabled(farm: dict) -> bool:
+    return farm.get("ai_preferences", {}).get("proactive_insights_enabled", True)
+
+
 @router.post("", response_model=FlockCheckResponse, status_code=201)
 @limiter.limit(settings.rate_limit_flock_check)
 def submit_flock_check(
     request: Request,
+    background_tasks: BackgroundTasks,
     farm_id: str,
     house_id: str,
     payload: FlockCheckCreate,
@@ -100,6 +124,7 @@ def submit_flock_check(
     risk_change = risk.score - previous_risk_score if previous_risk_score is not None else None
 
     flock_id = _active_flock_id(db, org_id, farm_id, house_id)
+    farm = _get_farm(db, org_id, farm_id)
     recorded_at = datetime.now(timezone.utc)
     doc_ref = flock_checks_ref(db, org_id, farm_id, house_id).document()
 
@@ -120,12 +145,16 @@ def submit_flock_check(
     # known, so a freshly placed flock's first Evening Check never pairs
     # against a leftover Morning Check from the house's previous occupant.
     comparison_candidates = [c for c in recent if flock_id is None or c.get("flock_id") in (flock_id, None)]
-    morning_comparison = build_morning_evening_comparison(comparison_candidates, {"id": doc_ref.id, **record})
+    morning_comparison = build_morning_evening_comparison(
+        comparison_candidates,
+        {"id": doc_ref.id, **record},
+        farm_timezone=farm.get("timezone"),
+    )
     record["morning_comparison"] = morning_comparison
 
     doc_ref.set(record)
 
-    sync_alert_for_check(
+    alert_result = sync_alert_for_check(
         db,
         org_id=org_id,
         farm_id=farm_id,
@@ -135,6 +164,28 @@ def submit_flock_check(
         risk=risk,
         previous_risk_score=previous_risk_score,
     )
+
+    # AI investigation is event-gated (deterministic, no AI call involved in
+    # the decision itself - app/agent/agent_router.py) and runs strictly
+    # AFTER this response is already on its way back to the farmer, via
+    # FastAPI BackgroundTasks - see app/agent/event_handlers.py for why that
+    # (and not Celery/Redis/etc.) is the right amount of infrastructure here.
+    trigger = _TRIGGER_BY_PERIOD.get(payload.period.value)
+    if trigger and _proactive_investigation_enabled(farm) and should_investigate_check(
+        risk_status=risk.status,
+        risk_change=risk_change,
+        has_active_alert=alert_result is not None,
+    ):
+        background_tasks.add_task(
+            investigate_flock_check,
+            db,
+            org_id=org_id,
+            farm_id=farm_id,
+            house_id=house_id,
+            flock_id=flock_id,
+            check_id=doc_ref.id,
+            trigger=trigger,
+        )
 
     return FlockCheckResponse(
         id=doc_ref.id,
@@ -203,7 +254,9 @@ def get_flock_check_comparison(
         recent = _load_recent_checks(db, org_id, farm_id, house_id, RECENT_HISTORY_SAMPLE_SIZE * 2)
         flock_id = check.get("flock_id")
         candidates = [c for c in recent if flock_id is None or c.get("flock_id") in (flock_id, None)]
-        comparison = build_morning_evening_comparison(candidates, check)
+        comparison = build_morning_evening_comparison(
+            candidates, check, farm_timezone=_get_farm(db, org_id, farm_id).get("timezone")
+        )
 
     if comparison is None:
         return {"available": False, "reason": "no_morning_check_same_day"}

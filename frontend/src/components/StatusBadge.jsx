@@ -20,7 +20,7 @@ export default function StatusBadge({ status, score, size = 'md', pill = false }
     <span className={`inline-flex items-center gap-1.5 font-semibold ${textSize}`} style={{ color: meta.color }}>
       <span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
       {meta.label}
-      {score !== undefined ? <span className="text-navy/40">— {score}</span> : null}
+      {score !== undefined ? <span className="text-muted">— {score}</span> : null}
     </span>
   )
 }

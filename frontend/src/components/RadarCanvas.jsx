@@ -12,8 +12,8 @@ export default function RadarCanvas({ houses, size = 320, onSelectHouse, showLeg
   const sweepTop = maxRadius * Math.cos(Math.PI / 3)
 
   return (
-    <div className="flex flex-col items-center">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <div className="flex w-full flex-col items-center">
+      <svg viewBox={`0 0 ${size} ${size}`} className="aspect-square w-full" style={{ maxWidth: size }}>
         <defs>
           <radialGradient id={`${gradientId}-bg`} cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#1B4332" stopOpacity="0.07" />

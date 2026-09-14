@@ -2,10 +2,11 @@ import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/useAuthStore'
 import { useAppStore } from '../store/useAppStore'
+import LoadingScreen from './LoadingScreen'
 
 export default function RequireAuth() {
   const { user, isLoading } = useAuthStore()
-  const { isBootstrapped, needsOnboarding, bootstrap } = useAppStore()
+  const { isBootstrapped, needsOnboarding, pendingInvitations, bootstrap } = useAppStore()
   const location = useLocation()
 
   useEffect(() => {
@@ -13,11 +14,7 @@ export default function RequireAuth() {
   }, [user, isBootstrapped, bootstrap])
 
   if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-bg text-sm text-navy/60">
-        Loading FlockGuard...
-      </div>
-    )
+    return <LoadingScreen label="Loading FlockGuard..." />
   }
 
   if (!user) {
@@ -25,14 +22,16 @@ export default function RequireAuth() {
   }
 
   if (!isBootstrapped) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-bg text-sm text-navy/60">
-        Loading your farm...
-      </div>
-    )
+    return <LoadingScreen label="Loading your farm..." />
   }
 
-  if (needsOnboarding && location.pathname !== '/onboarding') {
+  if (needsOnboarding && pendingInvitations.length > 0 && location.pathname !== '/invitations') {
+    // Someone invited onto an existing farm shouldn't be forced through
+    // farm creation - let them accept first.
+    return <Navigate to="/invitations" replace />
+  }
+
+  if (needsOnboarding && pendingInvitations.length === 0 && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />
   }
 

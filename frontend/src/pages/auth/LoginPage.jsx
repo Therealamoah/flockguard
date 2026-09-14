@@ -18,7 +18,7 @@ export default function LoginPage() {
     setIsSubmitting(true)
     try {
       await loginWithEmail(email, password)
-      navigate(location.state?.from?.pathname || '/', { replace: true })
+      navigate(location.state?.from?.pathname || '/overview', { replace: true })
     } catch {
       setError('Could not sign in. Check your email and password.')
     } finally {
@@ -66,7 +66,7 @@ export default function LoginPage() {
         {error ? <p className="text-sm text-critical">{error}</p> : null}
 
         <div className="flex items-center justify-between text-sm">
-          <label className="flex items-center gap-2 text-navy/70">
+          <label className="flex items-center gap-2 text-secondary">
             <input type="checkbox" className="h-4 w-4 accent-forest" />
             Remember me
           </label>

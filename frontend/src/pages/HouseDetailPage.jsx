@@ -36,6 +36,7 @@ import { formatClock, timeAgo } from '../lib/time'
 import { dayLabel } from '../lib/format'
 
 const PERIOD_ICON = { morning: Sun, evening: Moon, emergency: Siren }
+const PRIORITY_COLOR = { low: '#2F9E58', medium: '#B3811A', high: '#C05A1D', urgent: '#C8433A' }
 
 const FINDING_CATEGORIES = [
   { value: 'everything_normal', label: 'Everything normal' },
@@ -60,6 +61,7 @@ export default function HouseDetailPage() {
   const [openAlert, setOpenAlert] = useState(null)
   const [insights, setInsights] = useState([])
   const [inspections, setInspections] = useState([])
+  const [agentRecommendations, setAgentRecommendations] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
   const [showInspection, setShowInspection] = useState(Boolean(location.state?.openInspection))
@@ -82,7 +84,8 @@ export default function HouseDetailPage() {
       api.alerts.list({ resolved: false }),
       api.analytics.trendInsights(currentFarmId).catch(() => []),
       api.inspections.list(currentFarmId, houseId).catch(() => []),
-    ]).then(([trendData, checkData, flockData, alertData, insightData, inspectionData]) => {
+      api.agent.recommendations({ farmId: currentFarmId, houseId, status: 'open' }).catch(() => []),
+    ]).then(([trendData, checkData, flockData, alertData, insightData, inspectionData, recommendationData]) => {
       if (cancelled) return
       setTrends(trendData)
       setChecks(checkData)
@@ -90,6 +93,7 @@ export default function HouseDetailPage() {
       setOpenAlert(alertData.find((a) => a.house_id === houseId) || null)
       setInsights((insightData || []).filter((i) => i.house_id === houseId))
       setInspections(inspectionData || [])
+      setAgentRecommendations(recommendationData || [])
       setExplanation('')
       setIsLoading(false)
     })
@@ -149,7 +153,7 @@ export default function HouseDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center gap-2 p-6 text-sm text-navy/50">
+      <div className="flex items-center justify-center gap-2 p-6 text-sm text-secondary">
         <Loader2 size={16} className="animate-spin" />
         Loading house data...
       </div>
@@ -177,7 +181,7 @@ export default function HouseDetailPage() {
               <h1 className="font-display text-2xl font-extrabold text-navy">{house?.name || houseId}</h1>
               {latest ? <StatusBadge status={latest.risk_status} /> : null}
             </div>
-            <p className="mt-1 text-sm capitalize text-navy/60">
+            <p className="mt-1 text-sm capitalize text-secondary">
               {flock ? `${flock.bird_type || ''} Flock · ${flock.breed}`.trim() : 'No active flock'}
             </p>
           </div>
@@ -198,7 +202,7 @@ export default function HouseDetailPage() {
               </div>
             </div>
             <div>
-              <p className="text-xs text-navy/40">Risk score / 100</p>
+              <p className="text-xs text-muted">Risk score / 100</p>
               {riskDelta != null ? (
                 <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: riskTrendColor }}>
                   <RiskTrendIcon size={12} />
@@ -236,7 +240,7 @@ export default function HouseDetailPage() {
             <TrendUpIcon size={15} className="text-watch" />
             Proactive insight
           </div>
-          <ul className="mt-2 space-y-1 text-sm text-navy/70">
+          <ul className="mt-2 space-y-1 text-sm text-secondary">
             {insights.map((insight) => (
               <li key={insight.type}>{insight.message}</li>
             ))}
@@ -244,8 +248,113 @@ export default function HouseDetailPage() {
         </div>
       ) : null}
 
+      {agentRecommendations.map((rec) => (
+        <div key={rec.id} className="mt-6 rounded-xl border border-ai/30 bg-ai/5 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-bold text-navy">
+              <Sparkles size={15} className="text-ai" />
+              FlockGuard Intelligence — Why this needs attention
+            </div>
+            <span
+              className="rounded-full px-2.5 py-1 text-xs font-bold uppercase"
+              style={{
+                color: PRIORITY_COLOR[rec.priority],
+                backgroundColor: `${PRIORITY_COLOR[rec.priority]}1A`,
+              }}
+            >
+              {rec.priority} priority
+            </span>
+          </div>
+          <p className="mt-3 text-sm text-navy">{rec.summary}</p>
+
+          {rec.observed_data?.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">Observed Farm Data</p>
+              <ul className="mt-1 list-inside list-disc text-sm text-secondary">
+                {rec.observed_data.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {rec.calculated_signals?.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">Calculated Signals</p>
+              <ul className="mt-1 list-inside list-disc text-sm text-secondary">
+                {rec.calculated_signals.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {rec.historical_context?.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">Previous Similar Incident</p>
+              <ul className="mt-1 list-inside list-disc text-sm text-secondary">
+                {rec.historical_context.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {rec.knowledge_sources?.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">Relevant Guidance</p>
+              <ul className="mt-1 space-y-1 text-sm text-secondary">
+                {rec.knowledge_sources.map((src, i) => (
+                  <li key={i}>
+                    {src.title}
+                    {src.publisher ? ` — ${src.publisher}` : ''}
+                    {src.section ? `, ${src.section}` : ''}
+                    {src.page ? `, p.${src.page}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {rec.recommended_actions?.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">Recommended Inspection</p>
+              <ol className="mt-1 list-inside list-decimal text-sm text-secondary">
+                {rec.recommended_actions.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-hairline pt-3">
+            <span className="text-xs text-muted">AI Evidence Confidence: {rec.confidence}</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  api.agent.acknowledge(rec.id)
+                  setAgentRecommendations((prev) => prev.map((r) => (r.id === rec.id ? { ...r, status: 'acknowledged' } : r)))
+                }}
+                className="rounded-lg border border-hairline px-3 py-1.5 text-xs font-semibold text-navy hover:bg-forest/5"
+              >
+                Seen it
+              </button>
+              <button
+                onClick={() => {
+                  api.agent.complete(rec.id)
+                  setAgentRecommendations((prev) => prev.filter((r) => r.id !== rec.id))
+                }}
+                className="rounded-lg bg-forest px-3 py-1.5 text-xs font-semibold text-white hover:bg-forest-dark"
+              >
+                Mark handled
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+
       {!latest ? (
-        <p className="mt-6 text-sm text-navy/50">
+        <p className="mt-6 text-sm text-secondary">
           No Flock Checks recorded yet.{' '}
           <button onClick={handlePerformCheck} className="font-semibold text-forest">
             Record the first one
@@ -280,7 +389,7 @@ export default function HouseDetailPage() {
                 <FactorBars factors={latest.risk_factors} />
               </div>
               {explanation ? (
-                <p className="mt-4 border-t border-hairline pt-4 text-sm text-navy/70">{explanation}</p>
+                <p className="mt-4 border-t border-hairline pt-4 text-sm text-secondary">{explanation}</p>
               ) : null}
             </div>
 
@@ -321,7 +430,7 @@ export default function HouseDetailPage() {
 
               {showInspection ? (
                 <form onSubmit={handleSubmitInspection} className="mt-3 space-y-2 border-t border-hairline pt-3">
-                  <p className="text-xs font-semibold text-navy/50">What did you find?</p>
+                  <p className="text-xs font-semibold text-secondary">What did you find?</p>
                   <div className="flex flex-wrap gap-1.5">
                     {FINDING_CATEGORIES.map((cat) => (
                       <button
@@ -332,7 +441,7 @@ export default function HouseDetailPage() {
                           'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
                           findingCategory === cat.value
                             ? 'border-forest bg-forest/10 text-forest'
-                            : 'border-hairline text-navy/60 hover:bg-forest/5',
+                            : 'border-hairline text-secondary hover:bg-forest/5',
                         ].join(' ')}
                       >
                         {cat.label}
@@ -361,7 +470,7 @@ export default function HouseDetailPage() {
                     {isSubmittingInspection ? 'Saving...' : 'Save Inspection'}
                   </button>
                   {openAlert ? (
-                    <p className="text-xs text-navy/40">Saving this will resolve the open alert for this house.</p>
+                    <p className="text-xs text-muted">Saving this will resolve the open alert for this house.</p>
                   ) : null}
                 </form>
               ) : null}
@@ -386,15 +495,15 @@ export default function HouseDetailPage() {
                     onClick={() => navigate(`/houses/${houseId}/checks/${c.id}`)}
                     className="group flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2.5 text-sm transition-colors hover:bg-forest/5"
                   >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-bg text-navy/50">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-bg text-secondary">
                       <PeriodIcon size={14} />
                     </span>
-                    <span className="w-36 shrink-0 text-navy/50">
+                    <span className="w-36 shrink-0 text-secondary">
                       {formatClock(c.recorded_at)} · <span className="capitalize">{c.period}</span>
                     </span>
-                    <span className="flex-1 text-navy/70">Mortality {c.mortality}</span>
+                    <span className="flex-1 text-secondary">Mortality {c.mortality}</span>
                     <StatusBadge status={c.risk_status} score={c.risk_score} size="sm" />
-                    <ChevronRight size={15} className="shrink-0 text-navy/25 transition-transform group-hover:translate-x-0.5" />
+                    <ChevronRight size={15} className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
                   </div>
                 )
               })}
@@ -411,14 +520,14 @@ export default function HouseDetailPage() {
                       <span className="text-sm font-semibold capitalize text-navy">
                         {(insp.finding_category || 'inspection').replaceAll('_', ' ')}
                       </span>
-                      <span className="text-xs text-navy/40">{timeAgo(insp.created_at)}</span>
+                      <span className="text-xs text-muted">{timeAgo(insp.created_at)}</span>
                     </div>
-                    <p className="mt-1 text-sm text-navy/70">{insp.findings}</p>
+                    <p className="mt-1 text-sm text-secondary">{insp.findings}</p>
                     {insp.action_taken ? (
-                      <p className="mt-1 text-xs text-navy/50">Action: {insp.action_taken}</p>
+                      <p className="mt-1 text-xs text-secondary">Action: {insp.action_taken}</p>
                     ) : null}
                     {insp.performed_by ? (
-                      <p className="mt-1 text-xs text-navy/40">By {insp.performed_by}</p>
+                      <p className="mt-1 text-xs text-muted">By {insp.performed_by}</p>
                     ) : null}
                   </div>
                 ))}

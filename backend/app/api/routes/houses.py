@@ -5,6 +5,8 @@ from app.core.deps import get_current_org_id
 from app.core.firestore import get_firestore_client
 from app.core.refs import farms_ref, houses_ref
 from app.models.schemas import HouseCreate
+from app.services.billing_service import get_subscription
+from app.services.usage_service import count_houses, enforce_limit
 
 router = APIRouter(prefix="/farms/{farm_id}/houses", tags=["houses"])
 
@@ -27,6 +29,15 @@ def create_house(
 ):
     if not farms_ref(db, org_id).document(farm_id).get().exists:
         raise HTTPException(status_code=404, detail="Farm not found")
+
+    subscription = get_subscription(db, org_id)
+    enforce_limit(
+        count_houses(db, org_id),
+        subscription.get("limits", {}).get("houses"),
+        resource="house",
+        plan=subscription.get("plan", "pilot"),
+    )
+
     doc_ref = houses_ref(db, org_id, farm_id).document()
     data = payload.model_dump()
     doc_ref.set(data)

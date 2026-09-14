@@ -15,16 +15,21 @@ import {
   Users,
   CreditCard,
   LogOut,
+  Sun,
+  Moon,
+  Menu,
+  X,
 } from 'lucide-react'
 import LogoMark from '../components/Logo'
 import { useAuthStore } from '../store/useAuthStore'
 import { useAppStore } from '../store/useAppStore'
+import { useThemeStore } from '../store/useThemeStore'
 import { logout } from '../lib/firebase'
 import { api } from '../lib/api'
 import { displayName, initialsFor } from '../lib/format'
 
 const NAV = [
-  { to: '/', label: 'Overview', Icon: Home, end: true },
+  { to: '/overview', label: 'Overview', Icon: Home, end: true },
   { to: '/radar', label: 'AI Radar', Icon: RadarIcon },
   { to: '/flocks', label: 'Flocks', Icon: Bird },
   { to: '/houses', label: 'Houses', Icon: Warehouse },
@@ -41,7 +46,7 @@ const MANAGEMENT_NAV = [
 ]
 
 const MOBILE_NAV = [
-  { to: '/', label: 'Home', Icon: Home, end: true },
+  { to: '/overview', label: 'Home', Icon: Home, end: true },
   { to: '/radar', label: 'Radar', Icon: RadarIcon },
   { to: '/checks/new', label: 'CHECK', Icon: Plus, emphasize: true },
   { to: '/alerts', label: 'Alerts', Icon: ShieldAlert },
@@ -61,9 +66,11 @@ export default function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [openAlertCount, setOpenAlertCount] = useState(0)
   const [sidebarPeek, setSidebarPeek] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const hideTimeoutRef = useRef(null)
   const { user } = useAuthStore()
   const { currentFarmId } = useAppStore()
+  const { theme, toggleTheme } = useThemeStore()
   const navigate = useNavigate()
 
   function showSidebar() {
@@ -76,6 +83,15 @@ export default function AppLayout() {
   }
 
   useEffect(() => () => clearTimeout(hideTimeoutRef.current), [])
+
+  useEffect(() => {
+    if (!drawerOpen) return
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') setDrawerOpen(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [drawerOpen])
 
   useEffect(() => {
     if (!currentFarmId) return
@@ -96,13 +112,13 @@ export default function AppLayout() {
   return (
     <div className="flex min-h-screen bg-bg">
       {/* Reserves the collapsed rail's width in normal flow; the aside itself is fixed/overlaid so expanding it on hover never reflows this. */}
-      <div className="hidden w-16 shrink-0 md:block" />
+      <div className="hidden w-16 shrink-0 lg:block" />
 
       <aside
         onMouseEnter={showSidebar}
         onMouseLeave={scheduleHideSidebar}
         className={[
-          'fixed inset-y-0 left-0 z-20 hidden flex-col bg-forest-dark py-4 shadow-xl transition-[width] duration-200 ease-out md:flex',
+          'fixed inset-y-0 left-0 z-20 hidden flex-col bg-forest-dark py-4 shadow-xl transition-[width] duration-200 ease-out lg:flex',
           sidebarPeek ? 'w-60' : 'w-16',
         ].join(' ')}
       >
@@ -165,7 +181,7 @@ export default function AppLayout() {
             </button>
             {menuOpen ? (
               <div className="absolute bottom-full left-0 mb-1 w-56 rounded border border-hairline bg-surface py-1 text-sm shadow-sm">
-                <div className="truncate border-b border-hairline px-3 py-2 text-navy/60">
+                <div className="truncate border-b border-hairline px-3 py-2 text-secondary">
                   {user?.email}
                 </div>
                 <button
@@ -181,16 +197,42 @@ export default function AppLayout() {
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col pb-16 md:pb-0">
-        <header className="flex items-center justify-end border-b border-hairline bg-surface px-6 py-3 md:hidden">
-          <div className="flex items-center gap-2">
-            <LogoMark size={28} />
-            <span className="font-display text-sm font-extrabold text-navy">FlockGuard</span>
+      <div className="flex flex-1 flex-col pb-16 lg:pb-0">
+        <header className="flex items-center justify-between border-b border-hairline bg-surface px-4 py-3 lg:hidden">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="rounded-lg p-1.5 text-secondary hover:bg-forest/5 hover:text-navy"
+              aria-label="Open menu"
+            >
+              <Menu size={22} />
+            </button>
+            <button
+              onClick={() => navigate('/overview')}
+              className="flex items-center gap-2 rounded-lg px-1.5 py-1"
+            >
+              <LogoMark size={26} />
+              <span className="font-display text-sm font-extrabold text-navy">FlockGuard</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <NavLink to="/alerts" className="relative text-secondary hover:text-navy" title="Alerts">
+              <Bell size={20} />
+              {openAlertCount > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-critical" />
+              ) : null}
+            </NavLink>
+            <button onClick={toggleTheme} className="text-secondary hover:text-navy" title="Toggle theme">
+              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
           </div>
         </header>
 
-        <div className="hidden justify-end border-b border-hairline bg-surface px-6 py-3 md:flex">
-          <NavLink to="/alerts" className="relative text-navy/60 hover:text-navy" title="Alerts">
+        <div className="hidden items-center justify-end gap-4 border-b border-hairline bg-surface px-6 py-3 lg:flex">
+          <button onClick={toggleTheme} className="text-secondary hover:text-navy" title="Toggle theme">
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <NavLink to="/alerts" className="relative text-secondary hover:text-navy" title="Alerts">
             <Bell size={20} />
             {openAlertCount > 0 ? (
               <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-critical" />
@@ -203,7 +245,7 @@ export default function AppLayout() {
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-hairline bg-surface md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-hairline bg-surface lg:hidden">
         {MOBILE_NAV.map(({ to, label, Icon, end, emphasize }) => (
           <NavLink
             key={to}
@@ -212,7 +254,7 @@ export default function AppLayout() {
             className={({ isActive }) =>
               [
                 'flex flex-1 flex-col items-center gap-0.5 py-2 text-xs font-medium',
-                emphasize ? '' : isActive ? 'text-forest' : 'text-navy/60',
+                emphasize ? '' : isActive ? 'text-forest' : 'text-secondary',
               ].join(' ')
             }
           >
@@ -227,6 +269,85 @@ export default function AppLayout() {
           </NavLink>
         ))}
       </nav>
+
+      {drawerOpen ? (
+        <div className="fixed inset-0 z-30 lg:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
+          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[80%] flex-col bg-forest-dark py-4 shadow-xl">
+            <div className="flex items-center justify-between px-4">
+              <button
+                onClick={() => {
+                  setDrawerOpen(false)
+                  navigate('/overview')
+                }}
+                className="flex items-center gap-2"
+              >
+                <LogoMark size={30} />
+                <span className="font-display text-base font-extrabold text-white">FlockGuard</span>
+              </button>
+              <button
+                onClick={() => setDrawerOpen(false)}
+                className="rounded-lg p-1 text-white/60 hover:bg-white/5 hover:text-white"
+                aria-label="Close menu"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <nav className="mt-6 flex-1 space-y-0.5 overflow-y-auto px-3">
+              {NAV.map(({ to, label, Icon, end, badge }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  onClick={() => setDrawerOpen(false)}
+                  className={navLinkClass(true)}
+                >
+                  <span className="relative shrink-0">
+                    <Icon size={18} />
+                    {badge && openAlertCount > 0 ? (
+                      <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-critical" />
+                    ) : null}
+                  </span>
+                  <span className="flex-1 whitespace-nowrap">{label}</span>
+                </NavLink>
+              ))}
+
+              <p className="mt-6 px-3 text-xs font-bold uppercase tracking-wide text-white/30">Management</p>
+              {MANAGEMENT_NAV.map(({ to, label, Icon }) => (
+                <NavLink key={to} to={to} onClick={() => setDrawerOpen(false)} className={navLinkClass(true)}>
+                  <span className="shrink-0">
+                    <Icon size={18} />
+                  </span>
+                  <span className="whitespace-nowrap">{label}</span>
+                </NavLink>
+              ))}
+            </nav>
+
+            <div className="mt-auto px-3 pt-3">
+              <div className="flex items-center gap-2 rounded-lg px-3 py-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-forest text-xs font-bold text-white">
+                  {initialsFor(user)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-white">{displayName(user)}</span>
+                  <span className="block truncate text-xs text-white/50">{user?.email}</span>
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setDrawerOpen(false)
+                  handleLogout()
+                }}
+                className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white"
+              >
+                <LogOut size={16} />
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

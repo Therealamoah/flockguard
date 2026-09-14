@@ -7,6 +7,8 @@ import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 import OnboardingPage from './pages/onboarding/OnboardingPage'
+import InvitationsPage from './pages/InvitationsPage'
+import LandingPage from './pages/marketing/LandingPage'
 
 import OverviewPage from './pages/OverviewPage'
 import RadarPage from './pages/RadarPage'
@@ -28,6 +30,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<RedirectIfAuthed />}>
+          <Route index element={<LandingPage />} />
           <Route path="login" element={<LoginPage />} />
           <Route path="register" element={<RegisterPage />} />
           <Route path="forgot-password" element={<ForgotPasswordPage />} />
@@ -35,9 +38,10 @@ export default function App() {
 
         <Route element={<RequireAuth />}>
           <Route path="onboarding" element={<OnboardingPage />} />
+          <Route path="invitations" element={<InvitationsPage />} />
 
           <Route element={<AppLayout />}>
-            <Route index element={<OverviewPage />} />
+            <Route path="overview" element={<OverviewPage />} />
             <Route path="radar" element={<RadarPage />} />
             <Route path="flocks" element={<FlocksPage />} />
             <Route path="houses" element={<HousesPage />} />

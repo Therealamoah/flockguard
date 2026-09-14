@@ -33,7 +33,7 @@ const BASELINE_SAMPLE_SIZE = 14 // mirrors backend/app/risk_engine/engine.py
 
 function IconChip({ Icon }) {
   return (
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-hairline/70 text-navy/60">
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-hairline/70 text-secondary">
       <Icon size={14} />
     </span>
   )
@@ -48,7 +48,7 @@ function SectionCard({ icon: Icon, title, hint, children }) {
         </span>
         <h2 className="text-sm font-bold uppercase tracking-wide text-forest">{title}</h2>
       </div>
-      {hint ? <p className="mt-1 text-xs text-navy/50">{hint}</p> : null}
+      {hint ? <p className="mt-1 text-xs text-secondary">{hint}</p> : null}
       <div className="mt-3 space-y-3">{children}</div>
     </section>
   )
@@ -73,7 +73,7 @@ function ToggleRow({ label, options, value, onChange }) {
               'flex-1 rounded-lg border px-3 py-2 text-sm font-medium capitalize transition-colors',
               value === opt
                 ? 'border-forest bg-forest/10 text-forest'
-                : 'border-hairline text-navy/70 hover:bg-forest/5',
+                : 'border-hairline text-secondary hover:bg-forest/5',
             ].join(' ')}
           >
             {opt}
@@ -204,6 +204,7 @@ export default function FlockCheckPage() {
   const [photo, setPhoto] = useState(null)
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false)
   const [audio, setAudio] = useState(null)
   const mediaRecorderRef = useRef(null)
 
@@ -243,11 +244,17 @@ export default function FlockCheckPage() {
         stream.getTracks().forEach((t) => t.stop())
         const blob = new Blob(chunks, { type: 'audio/webm' })
         const file = new File([blob], 'flock-audio.webm', { type: 'audio/webm' })
+        setIsProcessingAudio(true)
         try {
           const uploaded = await api.media.upload(file, 'video')
           setAudio(uploaded)
+          if (uploaded.transcript) {
+            setNotes((prev) => (prev.trim() ? `${prev.trim()}\n\n🎤 ${uploaded.transcript}` : uploaded.transcript))
+          }
         } catch {
           setError('Audio upload failed. You can still submit without it.')
+        } finally {
+          setIsProcessingAudio(false)
         }
       }
       mediaRecorderRef.current = recorder
@@ -354,7 +361,7 @@ export default function FlockCheckPage() {
       <div className="mx-auto max-w-2xl p-6">
         <div className="overflow-hidden rounded-xl border border-hairline bg-surface shadow-sm">
           <div className="p-6 text-center" style={{ backgroundColor: `${meta.color}14` }}>
-            <p className="text-xs font-bold uppercase tracking-wide text-navy/50">Flock Check complete</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-secondary">Flock Check complete</p>
             <div
               className="relative mx-auto mt-3 flex h-24 w-24 items-center justify-center rounded-full"
               style={{ background: `conic-gradient(${meta.color} ${result.risk_score * 3.6}deg, #E4E1D8 0deg)` }}
@@ -369,7 +376,7 @@ export default function FlockCheckPage() {
               <StatusBadge status={result.risk_status} />
             </div>
             {result.previous_risk_score != null ? (
-              <p className="mt-2 text-sm font-semibold text-navy/60">
+              <p className="mt-2 text-sm font-semibold text-secondary">
                 {result.previous_risk_score} → {result.risk_score}
                 <span style={{ color: meta.color }}>
                   {' '}
@@ -391,22 +398,22 @@ export default function FlockCheckPage() {
             </div>
             <div className="mt-4 grid grid-cols-3 gap-3 text-center">
               <div>
-                <p className="text-xs text-navy/40">Morning</p>
+                <p className="text-xs text-muted">Morning</p>
                 <p className="font-display text-lg font-extrabold text-navy">{result.morning_comparison.morning_risk_score}</p>
               </div>
               <div>
-                <p className="text-xs text-navy/40">Now</p>
+                <p className="text-xs text-muted">Now</p>
                 <p className="font-display text-lg font-extrabold text-navy">{result.morning_comparison.evening_risk_score}</p>
               </div>
               <div>
-                <p className="text-xs text-navy/40">Change</p>
+                <p className="text-xs text-muted">Change</p>
                 <p className="font-display text-lg font-extrabold" style={{ color: meta.color }}>
                   {result.morning_comparison.risk_change > 0 ? '+' : ''}
                   {result.morning_comparison.risk_change}
                 </p>
               </div>
             </div>
-            <ul className="mt-4 space-y-1.5 text-sm text-navy/70">
+            <ul className="mt-4 space-y-1.5 text-sm text-secondary">
               <li>Mortality change: {result.morning_comparison.mortality_change > 0 ? '+' : ''}{result.morning_comparison.mortality_change}</li>
               {result.morning_comparison.feed_change != null ? (
                 <li>
@@ -433,7 +440,7 @@ export default function FlockCheckPage() {
                 <IconChip Icon={c.Icon} />
                 <div>
                   <p className="text-sm font-semibold text-navy">{c.headline}</p>
-                  <p className="text-xs text-navy/50">{c.detail}</p>
+                  <p className="text-xs text-secondary">{c.detail}</p>
                 </div>
               </li>
             ))}
@@ -448,7 +455,7 @@ export default function FlockCheckPage() {
               </span>
               <h2 className="text-sm font-bold text-navy">Why FlockGuard flagged it</h2>
             </div>
-            <p className="mt-3 flex items-center gap-2 text-sm text-navy/70">
+            <p className="mt-3 flex items-center gap-2 text-sm text-secondary">
               {explanationLoading ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
@@ -477,7 +484,7 @@ export default function FlockCheckPage() {
                   </span>
                   <div>
                     <p className="text-sm font-semibold text-navy">{p.headline}</p>
-                    <p className="text-xs text-navy/50">{p.detail}</p>
+                    <p className="text-xs text-secondary">{p.detail}</p>
                   </div>
                 </li>
               ))}
@@ -528,7 +535,7 @@ export default function FlockCheckPage() {
         <div>
           <p className="text-sm font-bold text-navy">{house?.name || 'Select a house'}</p>
           {house?.bird_capacity ? (
-            <p className="text-xs text-navy/50">Capacity {house.bird_capacity} birds</p>
+            <p className="text-xs text-secondary">Capacity {house.bird_capacity} birds</p>
           ) : null}
         </div>
       </div>
@@ -546,7 +553,7 @@ export default function FlockCheckPage() {
                   'flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition-colors',
                   period === opt
                     ? 'border-forest bg-forest/10 text-forest'
-                    : 'border-hairline text-navy/70 hover:bg-forest/5',
+                    : 'border-hairline text-secondary hover:bg-forest/5',
                 ].join(' ')}
               >
                 <PeriodIcon size={14} />
@@ -611,7 +618,7 @@ export default function FlockCheckPage() {
               onClick={() => setCrowding((v) => !v)}
               className={[
                 'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
-                crowding ? 'border-forest bg-forest/10 text-forest' : 'border-hairline text-navy/70',
+                crowding ? 'border-forest bg-forest/10 text-forest' : 'border-hairline text-secondary',
               ].join(' ')}
             >
               Crowding observed
@@ -621,7 +628,7 @@ export default function FlockCheckPage() {
               onClick={() => setUnusualSound((v) => !v)}
               className={[
                 'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
-                unusualSound ? 'border-forest bg-forest/10 text-forest' : 'border-hairline text-navy/70',
+                unusualSound ? 'border-forest bg-forest/10 text-forest' : 'border-hairline text-secondary',
               ].join(' ')}
             >
               Unusual noise
@@ -663,18 +670,27 @@ export default function FlockCheckPage() {
             <button
               type="button"
               onClick={toggleRecording}
+              disabled={isProcessingAudio}
               className={[
-                'flex flex-col items-center gap-1 rounded-lg border py-3 text-xs font-medium',
+                'flex flex-col items-center gap-1 rounded-lg border py-3 text-xs font-medium disabled:opacity-60',
                 isRecording ? 'border-critical bg-critical/10 text-critical' : 'border-hairline text-navy hover:bg-forest/5',
               ].join(' ')}
             >
               <Mic size={20} />
-              {isRecording ? 'Stop Recording' : 'Record Sound'}
+              {isRecording ? 'Stop Recording' : 'Record Voice Note'}
             </button>
           </div>
-          {isUploadingPhoto ? <p className="text-xs text-navy/50">Uploading photo...</p> : null}
+          <p className="text-[11px] text-muted">
+            Speak your observations aloud - it's transcribed straight into Notes below.
+          </p>
+          {isUploadingPhoto ? <p className="text-xs text-secondary">Uploading photo...</p> : null}
           {photo ? <p className="text-xs text-normal">Photo attached ✓</p> : null}
-          {audio ? <p className="text-xs text-normal">Audio attached ✓</p> : null}
+          {isProcessingAudio ? <p className="text-xs text-secondary">Transcribing voice note...</p> : null}
+          {audio ? (
+            <p className="text-xs text-normal">
+              Audio attached ✓{audio.transcript ? ' — transcribed into Notes' : ''}
+            </p>
+          ) : null}
         </SectionCard>
 
         <SectionCard icon={StickyNote} title="Notes">
@@ -707,7 +723,7 @@ export default function FlockCheckPage() {
           )}
         </button>
         {!isSubmitting && birdCount === '' ? (
-          <p className="text-center text-xs text-navy/40">Enter the current bird count above to analyze this check.</p>
+          <p className="text-center text-xs text-muted">Enter the current bird count above to analyze this check.</p>
         ) : null}
       </form>
     </div>

@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     app_public_url: str = "http://localhost:5173"
     app_name: str = "FlockGuard AI"
 
+    # Voice-note transcription for the Flock Check "Record Voice Note"
+    # button - Groq-specific (api.groq.com/openai/v1/audio/transcriptions),
+    # not part of the OpenAI-chat-completions surface the other providers
+    # above share, so grok_service.transcribe() no-ops when grok_api_base_url
+    # isn't Groq's.
+    grok_transcribe_model: str = "whisper-large-v3-turbo"
+
     # Rate limits, as slowapi/limits strings (e.g. "20/minute"). Kept
     # generous enough not to get in a real farmer's way during normal use
     # (a handful of Flock Checks a day, occasional AI questions) while
@@ -56,6 +63,34 @@ class Settings(BaseSettings):
     # - never trust the frontend or the file extension alone.
     max_image_upload_mb: float = 8.0
     max_audio_upload_mb: float = 20.0
+
+    # Team invite emails (app/services/email_service.py) - SMTP, e.g. Gmail
+    # with an App Password (myaccount.google.com/apppasswords; needs 2FA
+    # enabled on the account - a regular password will not work here).
+    # Left blank, invite emails are silently skipped (create_invitation still
+    # succeeds; the frontend falls back to "share this invite directly").
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""  # defaults to smtp_username if blank
+    smtp_from_name: str = "FlockGuard"
+
+    # Paystack (real payment processing for Starter/Growth/Pro - see
+    # app/services/paystack_service.py and app/services/billing_service.py's
+    # PLAN_CATALOG). Left blank, /billing/checkout fails clearly rather than
+    # pretending to charge anyone - PILOT stays free and fully usable either
+    # way. The three PAYSTACK_PLAN_CODE_* vars are Paystack "Plan" codes
+    # (plm_...), one per paid tier, created once via the Paystack dashboard
+    # (Plans -> Create Plan, GHS, monthly interval, amount matching
+    # PLAN_CATALOG) or via `POST https://api.paystack.co/plan` - Paystack
+    # ties a customer's recurring billing to the Plan, not to a raw amount,
+    # so these must exist before checkout works.
+    paystack_secret_key: str = ""
+    paystack_public_key: str = ""
+    paystack_plan_code_starter: str = ""
+    paystack_plan_code_growth: str = ""
+    paystack_plan_code_pro: str = ""
 
     @property
     def is_production(self) -> bool:

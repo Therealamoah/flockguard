@@ -91,11 +91,11 @@ export default function FlocksPage() {
           </span>
           <div>
             <h1 className="font-display text-2xl font-extrabold text-navy">Flocks</h1>
-            <p className="text-sm text-navy/60">Every active and past flock across your houses.</p>
+            <p className="text-sm text-secondary">Every active and past flock across your houses.</p>
           </div>
         </div>
         <div className="relative">
-          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-navy/40" />
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="text"
             value={query}
@@ -114,25 +114,25 @@ export default function FlocksPage() {
 
       <div className="mt-6 overflow-hidden rounded-xl border border-hairline bg-surface shadow-sm">
         {isLoading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-sm text-navy/50">
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-secondary">
             <Loader2 size={16} className="animate-spin" />
             Loading flocks...
           </div>
         ) : flocks.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-16 text-center">
-            <Bird size={28} className="text-navy/20" />
-            <p className="text-sm text-navy/50">No flocks yet.</p>
+            <Bird size={28} className="text-muted" />
+            <p className="text-sm text-secondary">No flocks yet.</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-16 text-center">
-            <Search size={28} className="text-navy/20" />
-            <p className="text-sm text-navy/50">No flocks match "{query}".</p>
+            <Search size={28} className="text-muted" />
+            <p className="text-sm text-secondary">No flocks match "{query}".</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
-                <tr className="border-b border-hairline bg-bg text-xs uppercase tracking-wide text-navy/50">
+                <tr className="border-b border-hairline bg-bg text-xs uppercase tracking-wide text-secondary">
                   <th className="py-3 px-4 font-semibold">Flock</th>
                   <th className="py-3 px-4 font-semibold">House</th>
                   <th className="py-3 px-4 font-semibold">Breed</th>
@@ -164,28 +164,28 @@ export default function FlocksPage() {
                           </span>
                           <div>
                             <p className="font-semibold text-navy">Flock {flockCodes[flock.id]}</p>
-                            <p className="text-xs capitalize text-navy/50">{flock.bird_type || 'Unspecified type'}</p>
+                            <p className="text-xs capitalize text-secondary">{flock.bird_type || 'Unspecified type'}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-navy/70">
+                      <td className="py-3 px-4 text-secondary">
                         <span className="flex items-center gap-1.5">
-                          <Building2 size={14} className="text-navy/40" />
+                          <Building2 size={14} className="text-muted" />
                           {flock.house.name}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-navy/70">{flock.breed}</td>
+                      <td className="py-3 px-4 text-secondary">{flock.breed}</td>
                       <td className="py-3 px-4">
-                        <span className="rounded-full bg-bg px-2 py-1 text-xs font-semibold text-navy/70">
+                        <span className="rounded-full bg-bg px-2 py-1 text-xs font-semibold text-secondary">
                           {ageLabel(flock) || '—'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-medium text-navy/70">{birds?.toLocaleString?.() ?? birds}</td>
+                      <td className="py-3 px-4 font-medium text-secondary">{birds?.toLocaleString?.() ?? birds}</td>
                       <td className="py-3 px-4">
                         {risk?.risk_score != null ? (
                           <StatusBadge status={risk.risk_status} pill size="sm" />
                         ) : (
-                          <span className="text-xs text-navy/40">No checks yet</span>
+                          <span className="text-xs text-muted">No checks yet</span>
                         )}
                       </td>
                       <td
@@ -195,7 +195,7 @@ export default function FlocksPage() {
                         {risk?.risk_score ?? '—'}
                       </td>
                       <td className="py-3 px-4">
-                        <ChevronRight size={16} className="text-navy/25 transition-transform group-hover:translate-x-0.5" />
+                        <ChevronRight size={16} className="text-muted transition-transform group-hover:translate-x-0.5" />
                       </td>
                     </tr>
                   )

@@ -48,7 +48,7 @@ export default function FlockCheckDetailPage() {
   if (error) return <div className="p-6 text-sm text-critical">{error}</div>
   if (!check) {
     return (
-      <div className="flex items-center justify-center gap-2 p-6 text-sm text-navy/50">
+      <div className="flex items-center justify-center gap-2 p-6 text-sm text-secondary">
         <Loader2 size={16} className="animate-spin" />
         Loading Flock Check...
       </div>
@@ -76,7 +76,7 @@ export default function FlockCheckDetailPage() {
           </span>
           <div>
             <h1 className="font-display text-2xl font-extrabold text-navy">{house?.name || houseId}</h1>
-            <p className="mt-1 text-sm capitalize text-navy/60">
+            <p className="mt-1 text-sm capitalize text-secondary">
               {check.period} check · {formatClock(check.recorded_at)}
             </p>
           </div>
@@ -93,7 +93,7 @@ export default function FlockCheckDetailPage() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-navy/40">Risk score / 100</p>
+            <p className="text-xs text-muted">Risk score / 100</p>
             <StatusBadge status={check.risk_status} size="sm" />
           </div>
         </div>
@@ -113,14 +113,14 @@ export default function FlockCheckDetailPage() {
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-hairline bg-surface p-4 shadow-sm">
-          <p className="flex items-center gap-1.5 text-xs text-navy/40">
+          <p className="flex items-center gap-1.5 text-xs text-muted">
             <Activity size={13} />
             Activity
           </p>
           <p className="mt-1 text-sm font-semibold capitalize text-navy">{check.activity}</p>
         </div>
         <div className="rounded-xl border border-hairline bg-surface p-4 shadow-sm">
-          <p className="flex items-center gap-1.5 text-xs text-navy/40">
+          <p className="flex items-center gap-1.5 text-xs text-muted">
             <Utensils size={13} />
             Feeding behaviour
           </p>
@@ -128,7 +128,7 @@ export default function FlockCheckDetailPage() {
         </div>
         {observations.length > 0 ? (
           <div className="rounded-xl border border-hairline bg-surface p-4 shadow-sm sm:col-span-2">
-            <p className="text-xs text-navy/40">Other observations</p>
+            <p className="text-xs text-muted">Other observations</p>
             <p className="mt-1 text-sm text-navy">{observations.join(' · ')}</p>
           </div>
         ) : null}
@@ -156,7 +156,7 @@ export default function FlockCheckDetailPage() {
             </span>
             <h2 className="text-sm font-bold text-navy">Notes</h2>
           </div>
-          <p className="mt-3 text-sm text-navy/70">{check.notes}</p>
+          <p className="mt-3 text-sm text-secondary">{check.notes}</p>
         </div>
       ) : null}
 

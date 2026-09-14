@@ -7,6 +7,8 @@ from app.core.deps import get_current_org_id
 from app.core.firestore import get_firestore_client
 from app.core.refs import flocks_ref, houses_ref
 from app.models.schemas import FlockCreate, FlockStatus, FlockUpdate
+from app.services.billing_service import get_subscription
+from app.services.usage_service import count_birds, enforce_limit
 
 router = APIRouter(prefix="/farms/{farm_id}/houses/{house_id}/flocks", tags=["flocks"])
 
@@ -31,6 +33,16 @@ def create_flock(
 ):
     if not houses_ref(db, org_id, farm_id).document(house_id).get().exists:
         raise HTTPException(status_code=404, detail="House not found")
+
+    subscription = get_subscription(db, org_id)
+    projected_birds = count_birds(db, org_id) + payload.initial_bird_count
+    enforce_limit(
+        projected_birds,
+        subscription.get("limits", {}).get("birds"),
+        resource="bird",
+        plan=subscription.get("plan", "pilot"),
+    )
+
     doc_ref = flocks_ref(db, org_id, farm_id, house_id).document()
     data = {
         **payload.model_dump(mode="json"),

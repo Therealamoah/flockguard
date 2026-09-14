@@ -72,12 +72,65 @@ service cloud.firestore {
         allow read: if inOrg(orgId);
         allow write: if false;
       }
+
+      // Team memberships: readable by any member of the org (seeing who
+      // has access isn't sensitive), never writable by a client - roles,
+      // status and org_id custom claims are only ever changed by the
+      // backend (backend/app/api/routes/team.py), never by a direct write.
+      match /members/{memberId} {
+        allow read: if inOrg(orgId);
+        allow write: if false;
+      }
+
+      // Invitations carry other people's email addresses and pending
+      // access grants - never exposed to any client, including members of
+      // the inviting org. Accepting one goes through the backend
+      // (POST /team/invitations/accept), which verifies the invitation's
+      // email against the caller's own verified token email.
+      match /invitations/{invitationId} {
+        allow read, write: if false;
+      }
+
+      // Billing/subscription data - backend-only, same reasoning as above.
+      match /subscription/{docId} {
+        allow read, write: if false;
+      }
+
+      // FlockGuard Agent audit log and recommendations (backend/app/agent/,
+      // backend/app/api/routes/agent.py). Readable by org members for the
+      // same reason alerts are; never written directly by a client - every
+      // agent run and recommendation is produced by the backend's own
+      // controlled tool-calling loop, never by anything a client could send.
+      match /agent_runs/{runId} {
+        allow read: if inOrg(orgId);
+        allow write: if false;
+      }
+
+      match /agent_recommendations/{recommendationId} {
+        allow read: if inOrg(orgId);
+        allow write: if false;
+      }
     }
 
     // No `users` collection exists in this app - no user-profile document
     // is ever created (confirmed: no `.collection("users")` anywhere in
     // the backend). Add a scoped rule here if that ever changes, rather
     // than carrying unused scaffolding.
+
+    // Curated poultry reference knowledge (RAG - backend/app/services/
+    // knowledge_service.py) is global, not organization-scoped, but still
+    // backend-only: ingestion/approval happens through
+    // backend/scripts/ingest_knowledge.py and knowledge_service.py, never
+    // through a client write, and retrieval always goes through the
+    // search_poultry_knowledge tool (which filters to approved+enabled
+    // documents) rather than a direct client read of the raw collection.
+    match /knowledge_documents/{documentId} {
+      allow read, write: if false;
+    }
+
+    match /knowledge_chunks/{chunkId} {
+      allow read, write: if false;
+    }
 
     match /{document=**} {
       allow read, write: if false;

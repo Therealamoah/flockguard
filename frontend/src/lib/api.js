@@ -17,15 +17,25 @@ export async function apiFetch(path, options = {}) {
 
   if (!response.ok) {
     const body = await response.text()
-    throw new Error(`API ${response.status}: ${body}`)
+    let detail = null
+    try {
+      detail = JSON.parse(body)?.detail ?? null
+    } catch {
+      // Not JSON (a proxy error page, etc.) - fall through with detail=null.
+    }
+    const error = new Error(`API ${response.status}: ${body}`)
+    error.status = response.status
+    error.detail = typeof detail === 'string' ? detail : null
+    throw error
   }
 
   if (response.status === 204) return null
   return response.json()
 }
 
-const post = (path, data) => apiFetch(path, { method: 'POST', body: JSON.stringify(data) })
+const post = (path, data) => apiFetch(path, { method: 'POST', body: data !== undefined ? JSON.stringify(data) : undefined })
 const patch = (path, data) => apiFetch(path, { method: 'PATCH', body: JSON.stringify(data) })
+const del = (path) => apiFetch(path, { method: 'DELETE' })
 const get = (path) => apiFetch(path)
 
 export const api = {
@@ -86,5 +96,43 @@ export const api = {
       form.append('file', file)
       return apiFetch(`/media/upload?resource_type=${resourceType}`, { method: 'POST', body: form })
     },
+  },
+  team: {
+    get: () => get('/team'),
+    invite: (email, role) => post('/team/invitations', { email, role }),
+    cancelInvitation: (invitationId) => del(`/team/invitations/${invitationId}`),
+    updateRole: (memberId, role) => patch(`/team/members/${memberId}`, { role }),
+    removeMember: (memberId) => del(`/team/members/${memberId}`),
+    myInvitations: () => get('/team/my-invitations'),
+    acceptInvitation: (orgId, invitationId) =>
+      post('/team/invitations/accept', { org_id: orgId, invitation_id: invitationId }),
+  },
+  settings: {
+    get: (farmId) => get(`/settings?farm_id=${farmId}`),
+    update: (farmId, data) => patch(`/settings?farm_id=${farmId}`, data),
+    updateAccount: (displayName) => patch('/settings/account', { display_name: displayName }),
+    archiveFarm: (farmId) => post(`/settings/farms/${farmId}/archive`),
+    unarchiveFarm: (farmId) => post(`/settings/farms/${farmId}/unarchive`),
+    deleteFarm: (farmId, confirmation) => post(`/settings/farms/${farmId}/delete`, { confirmation }),
+  },
+  billing: {
+    get: () => get('/billing'),
+    usage: () => get('/billing/usage'),
+    checkout: (plan) => post('/billing/checkout', { plan }),
+    verify: (reference) => post('/billing/verify', { reference }),
+    cancel: () => post('/billing/cancel'),
+  },
+  agent: {
+    recommendations: ({ farmId, houseId, status } = {}) => {
+      const params = new URLSearchParams()
+      if (farmId) params.set('farm_id', farmId)
+      if (houseId) params.set('house_id', houseId)
+      if (status) params.set('status', status)
+      const qs = params.toString()
+      return get(`/agent/recommendations${qs ? `?${qs}` : ''}`)
+    },
+    acknowledge: (id) => post(`/agent/recommendations/${id}/acknowledge`),
+    complete: (id) => post(`/agent/recommendations/${id}/complete`),
+    dismiss: (id) => post(`/agent/recommendations/${id}/dismiss`),
   },
 }

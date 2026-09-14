@@ -19,7 +19,7 @@ function Stepper({ step }) {
                 ? 'bg-forest text-white'
                 : n === step
                   ? 'bg-forest-dark text-white'
-                  : 'bg-hairline text-navy/50',
+                  : 'bg-hairline text-secondary',
             ].join(' ')}
           >
             {n < step ? <Check size={16} /> : n}
@@ -77,8 +77,8 @@ export default function OnboardingPage() {
       })
       setHouseId(house.id)
       setStep(3)
-    } catch {
-      setError('Could not create the house. Please try again.')
+    } catch (err) {
+      setError(err.detail || 'Could not create the house. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -96,8 +96,8 @@ export default function OnboardingPage() {
         initial_bird_count: Number(initialBirdCount),
       })
       setStep(4)
-    } catch {
-      setError('Could not add the flock. Please try again.')
+    } catch (err) {
+      setError(err.detail || 'Could not add the flock. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -105,7 +105,7 @@ export default function OnboardingPage() {
 
   async function handleFinish() {
     await bootstrap()
-    navigate('/', { replace: true })
+    navigate('/overview', { replace: true })
   }
 
   const StepIcon = STEP_ICON[step]
@@ -125,7 +125,7 @@ export default function OnboardingPage() {
                 <p className="text-xs font-bold uppercase tracking-wide text-forest">Step 1 of 3</p>
               </div>
               <h1 className="mt-3 font-display text-3xl font-extrabold text-navy">Create your farm</h1>
-              <p className="mt-2 text-sm text-navy/60">This is where all your houses and flocks will live.</p>
+              <p className="mt-2 text-sm text-secondary">This is where all your houses and flocks will live.</p>
 
               <label className="mt-6 mb-1 block text-sm font-semibold text-navy">Farm name</label>
               <input
@@ -159,7 +159,7 @@ export default function OnboardingPage() {
               <h1 className="mt-3 font-display text-3xl font-extrabold text-navy">
                 Set up your first poultry house
               </h1>
-              <p className="mt-2 text-sm text-navy/60">Each house tracks its own risk and flock history.</p>
+              <p className="mt-2 text-sm text-secondary">Each house tracks its own risk and flock history.</p>
 
               <label className="mt-6 mb-1 block text-sm font-semibold text-navy">House name</label>
               <input
@@ -210,7 +210,7 @@ export default function OnboardingPage() {
                 <p className="text-xs font-bold uppercase tracking-wide text-forest">Step 3 of 3</p>
               </div>
               <h1 className="mt-3 font-display text-3xl font-extrabold text-navy">Add your first flock</h1>
-              <p className="mt-2 text-sm text-navy/60">Tell us what's currently living in this house.</p>
+              <p className="mt-2 text-sm text-secondary">Tell us what's currently living in this house.</p>
 
               <label className="mt-6 mb-1 block text-sm font-semibold text-navy">Bird type</label>
               <div className="flex gap-2">
@@ -223,7 +223,7 @@ export default function OnboardingPage() {
                       'flex-1 rounded-lg border px-3 py-2 text-sm font-medium capitalize transition-colors',
                       birdType === type
                         ? 'border-forest bg-forest/10 text-forest'
-                        : 'border-hairline text-navy/70 hover:bg-forest/5',
+                        : 'border-hairline text-secondary hover:bg-forest/5',
                     ].join(' ')}
                   >
                     {type}
@@ -292,7 +292,7 @@ export default function OnboardingPage() {
                 <CheckCircle2 size={32} />
               </div>
               <h1 className="mt-4 font-display text-3xl font-extrabold text-navy">Your farm is ready.</h1>
-              <p className="mt-2 text-sm text-navy/60">
+              <p className="mt-2 text-sm text-secondary">
                 {farmName}, {houseName} and your first flock are all set up.
               </p>
               <button

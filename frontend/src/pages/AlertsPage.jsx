@@ -51,7 +51,7 @@ export default function AlertsPage() {
           </span>
           <div>
             <h1 className="font-display text-2xl font-extrabold text-navy">Alerts</h1>
-            <p className="text-sm text-navy/60">Issues the Risk Engine flagged for your attention.</p>
+            <p className="text-sm text-secondary">Issues the Risk Engine flagged for your attention.</p>
           </div>
         </div>
         <div className="flex gap-1 rounded-lg border border-hairline bg-surface p-1">
@@ -61,7 +61,7 @@ export default function AlertsPage() {
               onClick={() => setFilter(f)}
               className={[
                 'rounded-md px-3 py-1.5 text-xs font-semibold capitalize transition-colors',
-                filter === f ? 'bg-forest text-white' : 'text-navy/60 hover:bg-forest/5',
+                filter === f ? 'bg-forest text-white' : 'text-secondary hover:bg-forest/5',
               ].join(' ')}
             >
               {f}
@@ -72,14 +72,14 @@ export default function AlertsPage() {
 
       <div className="mt-6 space-y-4">
         {isLoading ? (
-          <div className="flex items-center justify-center gap-2 rounded-xl border border-hairline bg-surface py-16 text-sm text-navy/50 shadow-sm">
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-hairline bg-surface py-16 text-sm text-secondary shadow-sm">
             <Loader2 size={16} className="animate-spin" />
             Loading alerts...
           </div>
         ) : alerts.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-hairline bg-surface py-16 text-center shadow-sm">
-            <ShieldCheck size={28} className="text-navy/20" />
-            <p className="text-sm text-navy/50">No {filter !== 'all' ? filter : ''} alerts.</p>
+            <ShieldCheck size={28} className="text-muted" />
+            <p className="text-sm text-secondary">No {filter !== 'all' ? filter : ''} alerts.</p>
           </div>
         ) : (
           alerts.map((alert) => {
@@ -96,13 +96,13 @@ export default function AlertsPage() {
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <StatusBadge status={alert.status} score={alert.score} />
                         {alert.previous_risk_score != null ? (
-                          <span className="text-xs font-semibold text-navy/50">
+                          <span className="text-xs font-semibold text-secondary">
                             {alert.previous_risk_score} → {alert.score}
                             {alert.risk_change != null ? ` (${alert.risk_change > 0 ? '+' : ''}${alert.risk_change})` : ''}
                           </span>
                         ) : null}
                         {alert.occurrence_count > 1 ? (
-                          <span className="rounded-full bg-hairline/70 px-2 py-0.5 text-xs font-semibold text-navy/60">
+                          <span className="rounded-full bg-hairline/70 px-2 py-0.5 text-xs font-semibold text-secondary">
                             Seen {alert.occurrence_count}×
                           </span>
                         ) : null}
@@ -110,14 +110,14 @@ export default function AlertsPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-navy/40">{timeAgo(alert.created_at)}</p>
+                    <p className="text-xs text-muted">{timeAgo(alert.created_at)}</p>
                     {alert.resolved ? (
                       <span className="mt-2 flex items-center gap-1 text-xs font-semibold text-normal">
                         <Check size={12} />
                         Resolved
                       </span>
                     ) : alert.acknowledged ? (
-                      <span className="mt-2 flex items-center gap-1 text-xs font-semibold text-navy/50">
+                      <span className="mt-2 flex items-center gap-1 text-xs font-semibold text-secondary">
                         <Check size={12} />
                         Seen
                       </span>
@@ -126,7 +126,7 @@ export default function AlertsPage() {
                 </div>
 
                 <div className="mt-4 border-t border-hairline pt-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-navy/40">Why this house is flagged</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted">Why this house is flagged</p>
                   <div className="mt-3">
                     <FactorBars factors={alert.factors} />
                   </div>

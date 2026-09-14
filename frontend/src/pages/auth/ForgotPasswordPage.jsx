@@ -38,7 +38,7 @@ export default function ForgotPasswordPage() {
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-normal/10 text-normal">
             <MailCheck size={22} />
           </span>
-          <p className="text-sm text-navy/70">
+          <p className="text-sm text-secondary">
             If an account exists for <strong>{email}</strong>, a reset link is on its way.
           </p>
         </div>

@@ -8,7 +8,9 @@ import StatCard from '../components/StatCard'
 import { statusMeta } from '../lib/risk'
 import { greetingFor, formatDateLong, formatTime, timeAgo, formatClock } from '../lib/time'
 import { displayName } from '../lib/format'
-import { ShieldCheck, Bird, Warehouse, Bell, ClipboardList, Sun, Moon, Loader2, Sparkles } from 'lucide-react'
+import { ShieldCheck, Bird, Warehouse, Bell, ClipboardList, Sun, Moon, Loader2, Sparkles, X } from 'lucide-react'
+
+const PRIORITY_COLOR = { low: '#2F9E58', medium: '#B3811A', high: '#C05A1D', urgent: '#C8433A' }
 
 function useClock() {
   const [now, setNow] = useState(() => new Date())
@@ -30,6 +32,7 @@ export default function OverviewPage() {
   const [activeFlocks, setActiveFlocks] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [brief, setBrief] = useState(null)
+  const [recommendations, setRecommendations] = useState([])
 
   useEffect(() => {
     if (!currentFarmId) return
@@ -132,6 +135,33 @@ export default function OverviewPage() {
     }
   }, [currentFarmId])
 
+  useEffect(() => {
+    if (!currentFarmId) return
+    let cancelled = false
+    // FlockGuard Agent recommendations from event-triggered investigations
+    // (backend/app/agent/) - real, persisted, tenant-scoped; empty array if
+    // nothing is open, never fabricated.
+    api.agent
+      .recommendations({ farmId: currentFarmId, status: 'open' })
+      .then((data) => {
+        if (!cancelled) setRecommendations(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [currentFarmId])
+
+  async function handleDismissRecommendation(id) {
+    setRecommendations((prev) => prev.filter((r) => r.id !== id))
+    try {
+      await api.agent.dismiss(id)
+    } catch {
+      // best-effort - already removed from view; a stale server-side "open"
+      // status isn't worth surfacing an error to the farmer over.
+    }
+  }
+
   const checkedHouses = compare.filter((h) => h.risk_score !== null)
   const farmHealth = checkedHouses.length
     ? Math.round(100 - checkedHouses.reduce((sum, h) => sum + h.risk_score, 0) / checkedHouses.length)
@@ -148,7 +178,7 @@ export default function OverviewPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center gap-2 p-6 text-sm text-navy/50">
+      <div className="flex items-center justify-center gap-2 p-6 text-sm text-secondary">
         <Loader2 size={16} className="animate-spin" />
         Loading your farm...
       </div>
@@ -164,7 +194,7 @@ export default function OverviewPage() {
             <h1 className="mt-1 font-display text-2xl font-extrabold capitalize sm:text-3xl">
               {greetingFor(now)}, {firstName}
             </h1>
-            <p className="mt-2 text-sm text-white/70">Here's what is happening across your farm today.</p>
+            <p className="mt-2 text-sm text-white/80">Here's what is happening across your farm today.</p>
           </div>
           <div className="flex items-center gap-3 self-start rounded-lg bg-white/10 px-4 py-3 sm:self-auto">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 text-white">
@@ -183,7 +213,52 @@ export default function OverviewPage() {
             <Sparkles size={14} className="text-ai" />
             Daily Brief
           </div>
-          <p className="mt-2 text-sm text-navy/70">{brief.ai_text || brief.brief_text}</p>
+          <p className="mt-2 text-sm text-secondary">{brief.ai_text || brief.brief_text}</p>
+        </div>
+      ) : null}
+
+      {recommendations.length > 0 ? (
+        <div className="mt-6 rounded-xl border border-hairline bg-surface p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-sm font-bold text-navy">
+            <Sparkles size={14} className="text-ai" />
+            FlockGuard Intelligence — {recommendations.length} recommendation{recommendations.length === 1 ? '' : 's'}
+          </div>
+          <div className="mt-3 space-y-2">
+            {recommendations.map((rec) => {
+              const house = houses.find((h) => h.id === rec.house_id)
+              const color = PRIORITY_COLOR[rec.priority] || PRIORITY_COLOR.medium
+              return (
+                <div key={rec.id} className="flex items-start gap-3 rounded-lg border border-hairline p-3">
+                  <span
+                    className="mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-bold uppercase"
+                    style={{ color, backgroundColor: `${color}1A` }}
+                  >
+                    {rec.priority}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-navy">
+                      {house?.name || 'Farm'}: {rec.title}
+                    </p>
+                    {rec.recommended_actions?.[0] ? (
+                      <p className="mt-0.5 text-xs text-secondary">{rec.recommended_actions[0]}</p>
+                    ) : null}
+                    {house ? (
+                      <Link to={`/houses/${house.id}`} className="mt-1 inline-block text-xs font-semibold text-forest">
+                        View house →
+                      </Link>
+                    ) : null}
+                  </div>
+                  <button
+                    onClick={() => handleDismissRecommendation(rec.id)}
+                    className="shrink-0 rounded p-1 text-muted hover:bg-hairline/50 hover:text-navy"
+                    title="Dismiss"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
         </div>
       ) : null}
 
@@ -192,7 +267,7 @@ export default function OverviewPage() {
           <>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-navy/50">
+                <p className="text-xs font-bold uppercase tracking-wide text-secondary">
                   Needs attention first
                 </p>
                 <p className="mt-1 font-display text-lg font-bold text-navy">
@@ -207,13 +282,13 @@ export default function OverviewPage() {
               <RadarCanvas houses={compare} size={200} />
             </div>
             {worst.risk_status !== 'normal' ? (
-              <p className="text-center text-sm text-navy/50">
+              <p className="text-center text-sm text-secondary">
                 {worst.house_name} needs inspection first
               </p>
             ) : null}
           </>
         ) : (
-          <p className="text-sm text-navy/50">
+          <p className="text-sm text-secondary">
             No Flock Checks recorded yet.{' '}
             <Link to="/checks/new" className="font-semibold text-forest">
               Record your first check
@@ -268,11 +343,11 @@ export default function OverviewPage() {
         </div>
         <div className="mt-3 space-y-2">
           {activity.length === 0 ? (
-            <p className="text-sm text-navy/50">No activity yet today.</p>
+            <p className="text-sm text-secondary">No activity yet today.</p>
           ) : (
             activity.map((event) => (
               <div key={event.key} className="flex items-start gap-3 border-l-2 pl-3" style={{ borderColor: event.color }}>
-                <span className="w-14 shrink-0 text-xs text-navy/40">{formatClock(event.at)}</span>
+                <span className="w-14 shrink-0 text-xs text-muted">{formatClock(event.at)}</span>
                 <span className="text-sm text-navy">{event.text}</span>
               </div>
             ))

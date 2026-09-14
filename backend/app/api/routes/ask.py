@@ -1,16 +1,19 @@
 import json
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from google.cloud.firestore import Client
 
+from app.agent.agent_router import is_greeting, select_skill_for_question
+from app.agent.flockguard_agent import run_agent
 from app.core.config import settings
 from app.core.deps import get_current_org_id
 from app.core.firestore import get_firestore_client
 from app.core.limiter import limiter
-from app.core.refs import farms_ref, flock_checks_ref
+from app.core.refs import agent_runs_ref, farms_ref, flock_checks_ref
 from app.models.schemas import AskRequest, ExplainCheckRequest
-from app.services.comparison_service import build_morning_evening_comparison
+from app.services.comparison_service import build_morning_evening_comparison, resolve_timezone
 from app.services.daily_brief_service import build_daily_brief
 from app.services.farm_context_service import (
     get_farm_status,
@@ -19,7 +22,9 @@ from app.services.farm_context_service import (
     list_houses,
     resolve_house,
 )
+from app.services.billing_service import get_subscription
 from app.services.grok_service import grok_service
+from app.services.usage_service import get_ai_requests_this_month, increment_ai_requests
 
 _logger = logging.getLogger(__name__)
 
@@ -68,75 +73,26 @@ def _resolve_farm_id(db: Client, org_id: str, requested_farm_id: str | None) -> 
     return docs[0].id if docs else None
 
 
-def _mentions(question: str, *words: str) -> bool:
-    q = question.lower()
-    return any(w in q for w in words)
-
-
-def _find_mentioned_houses(question: str, houses: list[dict]) -> list[dict]:
-    q = question.lower()
-    found = []
-    for house in houses:
-        name = (house.get("name") or "").strip().lower()
-        if name and name in q:
-            found.append(house)
-    return found
-
-
-def _build_context(db: Client, org_id: str, farm_id: str, payload: AskRequest) -> dict:
-    """Assembles only the FlockGuard data relevant to this question, as a
-    small structured dict - never the whole database. This is what makes
-    Ask FlockGuard AI-native rather than a generic chatbot: every fact it
-    can cite comes from here, not from Grok's own knowledge.
-    """
-    houses = list_houses(db, org_id, farm_id)
-    farm_status = get_farm_status(db, org_id, farm_id) or {}
-    context: dict = {
-        "farm_name": farm_status.get("farm", {}).get("name"),
-        "houses_total": farm_status.get("houses_total"),
-        "houses_stable": farm_status.get("houses_stable"),
-        "houses_needing_attention": farm_status.get("houses_needing_attention"),
-        "houses_missing_morning_check": farm_status.get("houses_missing_morning_check"),
-        "active_alerts": farm_status.get("active_alerts"),
-        "house_comparison": farm_status.get("house_comparison"),
-    }
-
-    question = payload.question or ""
-    target_houses = []
-    if payload.house_id:
-        match = resolve_house(houses, payload.house_id)
-        if match:
-            target_houses.append(match)
-    target_houses.extend(h for h in _find_mentioned_houses(question, houses) if h not in target_houses)
-
-    if _mentions(question, "compare") and len(target_houses) < 2:
-        # "Compare House A and House B" - house_comparison above already
-        # covers this for most cases; nothing extra to add here.
-        pass
-
-    house_details = []
-    wants_history = _mentions(question, "week", "history", "trend", "since", "changed", "compare")
-    for house in target_houses[:3]:  # cap: never build unbounded context from a long question
-        status = get_house_status(db, org_id, farm_id, house["id"])
-        if not status:
-            continue
-        if wants_history:
-            status["recent_history"] = get_flock_history(db, org_id, farm_id, house["id"], limit=14)
-        house_details.append(status)
-    if house_details:
-        context["requested_houses"] = house_details
-
-    return context
-
-
-async def _safe_chat(messages: list[dict]) -> str | None:
+async def _safe_chat(db: Client, org_id: str, messages: list[dict]) -> str | None:
     """Never raises. Returns None (instead of an exception) if Grok is down,
-    times out, or errors - callers decide the graceful fallback."""
+    times out, errors, or the plan's monthly AI quota is already used up -
+    callers decide the graceful fallback. Used by /ask/explain and
+    /ask/daily-brief below, which are narrow, single-purpose grounded
+    prompts rather than open-ended investigations (those go through
+    app/agent/flockguard_agent.py::run_agent, which enforces/tracks this
+    same quota for itself)."""
+    subscription = get_subscription(db, org_id)
+    limit = subscription.get("limits", {}).get("ai_requests_monthly")
+    if limit is not None and get_ai_requests_this_month(db, org_id) >= limit:
+        _logger.info("Org %s hit its monthly AI request limit; skipping Grok call", org_id)
+        return None
     try:
-        return await grok_service.chat(messages)
+        answer = await grok_service.chat(messages)
     except Exception:  # noqa: BLE001 - any AI-layer failure must not break the caller
         _logger.exception("Grok call failed; falling back gracefully")
         return None
+    increment_ai_requests(db, org_id)
+    return answer
 
 
 @router.post("")
@@ -147,24 +103,54 @@ async def ask_flockguard(
     org_id: str = Depends(get_current_org_id),
     db: Client = Depends(get_firestore_client),
 ):
+    """Ask FlockGuard runs on the SAME Agent + Skills + Tools architecture
+    as event-triggered investigations (app/agent/) - not a second,
+    independent AI system. A free-text question is routed to a skill
+    (app/agent/agent_router.py::select_skill_for_question), and the agent
+    decides for itself which controlled tools it needs to answer it,
+    rather than this route pre-guessing and dumping a fixed context blob.
+    """
+    if is_greeting(payload.question):
+        # No agent run for a bare greeting - cheap, instant, and consistent
+        # with this file's own docstring elsewhere about not spending an AI
+        # call on something plain Python can already answer.
+        return {
+            "answer": (
+                "Hi! I'm here to help with your flocks, houses, alerts, and general poultry-care "
+                "questions - what would you like to know?"
+            )
+        }
+
     farm_id = _resolve_farm_id(db, org_id, payload.farm_id)
     if not farm_id:
         return {"answer": "You don't have a farm set up yet - finish onboarding first and I'll be able to help."}
 
-    context = _build_context(db, org_id, farm_id, payload)
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {
-            "role": "system",
-            "content": "Current FlockGuard data (JSON). Only reference facts present here:\n" + json.dumps(context, default=str),
-        },
-        {"role": "user", "content": payload.question},
-    ]
+    house_id = None
+    if payload.house_id:
+        match = resolve_house(list_houses(db, org_id, farm_id), payload.house_id)
+        house_id = match["id"] if match else None
 
-    answer = await _safe_chat(messages)
-    if answer is None:
+    skill = select_skill_for_question(payload.question)
+    state = await run_agent(
+        db,
+        org_id=org_id,
+        trigger="ask_flockguard_question",
+        skill=skill,
+        farm_id=farm_id,
+        house_id=house_id,
+        question=payload.question,
+    )
+
+    # Persisted the same way an event-triggered run is - one audit trail,
+    # regardless of what triggered the investigation.
+    agent_runs_ref(db, org_id).document(state.run_id).set(state.to_run_document())
+
+    if state.status != "completed" or not state.assessment:
+        if state.error_summary and "AI request limit" in state.error_summary:
+            raise HTTPException(status_code=402, detail=state.error_summary)
         raise HTTPException(status_code=502, detail=AI_UNAVAILABLE_MESSAGE)
-    return {"answer": answer}
+
+    return {"answer": state.assessment.summary, "assessment": state.assessment.model_dump(mode="json")}
 
 
 @router.post("/explain")
@@ -222,7 +208,7 @@ async def explain_check(
         {"role": "user", "content": f"Why is {house_name} {check.get('risk_status')}?"},
     ]
 
-    answer = await _safe_chat(messages)
+    answer = await _safe_chat(db, org_id, messages)
     return {
         "available": answer is not None,
         "explanation": answer,
@@ -259,18 +245,29 @@ async def ai_daily_brief(
     result = {"available": True, **brief, "ai_text": None}
 
     if reword:
+        # Previously hard-coded a "good morning" style greeting regardless
+        # of the actual time of day - fixed to greet correctly based on the
+        # farm's own local time (falls back to UTC if no timezone is set,
+        # same convention as comparison_service/farm_context_service),
+        # matching frontend/src/lib/time.js::greetingFor's morning/
+        # afternoon/evening bands exactly.
+        farm_tz = resolve_timezone(status.get("farm", {}).get("timezone"))
+        local_hour = datetime.now(farm_tz).hour
+        greeting_word = "morning" if local_hour < 12 else "afternoon" if local_hour < 18 else "evening"
+
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "system",
                 "content": (
-                    "Rewrite the following farm summary as a warm, brief 'good morning' style "
-                    "greeting for a farmer (3-5 short sentences, no invented facts, no diagnosis):\n"
-                    + brief["brief_text"]
+                    f"Rewrite the following farm summary as a warm, brief 'good {greeting_word}' style "
+                    "greeting for a farmer (3-5 short sentences, no invented facts, no diagnosis). "
+                    f"It is currently {greeting_word} at this farm, so greet accordingly - never say "
+                    f"'good morning' unless the greeting word above is 'morning':\n" + brief["brief_text"]
                 ),
             },
             {"role": "user", "content": "Give me today's farm brief."},
         ]
-        result["ai_text"] = await _safe_chat(messages)
+        result["ai_text"] = await _safe_chat(db, org_id, messages)
 
     return result

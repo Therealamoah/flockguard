@@ -38,7 +38,7 @@ export default function AnalyticsPage() {
           </span>
           <div>
             <h1 className="font-display text-2xl font-extrabold text-navy">Analytics</h1>
-            <p className="text-sm text-navy/60">Trends for one house over time.</p>
+            <p className="text-sm text-secondary">Trends for one house over time.</p>
           </div>
         </div>
         <select
@@ -55,14 +55,14 @@ export default function AnalyticsPage() {
       </div>
 
       {isLoading ? (
-        <div className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-hairline bg-surface py-16 text-sm text-navy/50 shadow-sm">
+        <div className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-hairline bg-surface py-16 text-sm text-secondary shadow-sm">
           <Loader2 size={16} className="animate-spin" />
           Loading trends...
         </div>
       ) : trends.length === 0 ? (
         <div className="mt-6 flex flex-col items-center gap-2 rounded-xl border border-hairline bg-surface py-16 text-center shadow-sm">
-          <Inbox size={28} className="text-navy/20" />
-          <p className="text-sm text-navy/50">No Flock Checks recorded yet for this house.</p>
+          <Inbox size={28} className="text-muted" />
+          <p className="text-sm text-secondary">No Flock Checks recorded yet for this house.</p>
         </div>
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2">

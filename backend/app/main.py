@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from fastapi.exceptions import RequestValidationError
@@ -15,9 +16,11 @@ from app.core.limiter import limiter
 _logger = logging.getLogger(__name__)
 
 from app.api.routes import (
+    agent,
     alerts,
     analytics,
     ask,
+    billing,
     farms,
     flock_checks,
     flocks,
@@ -26,6 +29,8 @@ from app.api.routes import (
     inspections,
     media,
     debug,
+    settings as settings_routes,
+    team,
 )
 from app.core.config import settings
 
@@ -48,13 +53,25 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         text = body.decode("utf-8", errors="replace")
     except Exception:
         text = "<unavailable>"
+
+    # pydantic-core embeds the raw exception object (e.g. a ValueError) in
+    # each error's `ctx` when a field_validator raises one - the standard,
+    # idiomatic way to fail validation in Pydantic v2. That's not JSON
+    # serializable on its own, so building the response from raw
+    # `exc.errors()` used to crash with a 500 the instant any validator
+    # raised ValueError (this codebase's first ones live in
+    # app/models/schemas.py's Team/Settings validators). Strip `ctx`
+    # (the human-readable `msg` already carries its message) and run the
+    # rest through jsonable_encoder for good measure.
+    errors = [{k: v for k, v in err.items() if k != "ctx"} for err in exc.errors()]
+
     _logger.warning(
         "Request validation error: %s path=%s body=%s",
-        exc.errors(),
+        errors,
         request.url.path,
         (text[:1000] + "...") if len(text) > 1000 else text,
     )
-    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 @app.exception_handler(FastAPIHTTPException)
@@ -117,3 +134,7 @@ app.include_router(alerts.router)
 app.include_router(ask.router)
 app.include_router(media.router)
 app.include_router(debug.router)
+app.include_router(team.router)
+app.include_router(settings_routes.router)
+app.include_router(billing.router)
+app.include_router(agent.router)

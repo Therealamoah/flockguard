@@ -1,18 +1,34 @@
 """Structured Morning-vs-Evening (or Emergency) Flock Check comparison.
 
 Pairs a later check against the same house's most recent MORNING check
-recorded on the same calendar date, and computes a structured diff. This
-is deliberately pure and deterministic - no AI involved, so it can be
-persisted, tested, and trusted the same way the Risk Engine is.
+recorded on the same calendar date IN THE FARM'S OWN TIMEZONE, and
+computes a structured diff. This is deliberately pure and deterministic -
+no AI involved, so it can be persisted, tested, and trusted the same way
+the Risk Engine is.
 
-Known simplification: "same calendar date" is computed in UTC, since Farm
-documents don't carry a timezone today. Fine for a single-timezone pilot;
-revisit (store a farm-level IANA timezone) if farms span multiple zones.
+Farm timezone support: a farm's `timezone` field (IANA identifier, e.g.
+"Africa/Accra" - see app/api/routes/settings.py) is resolved once by the
+caller and passed in as `tz_name`. Farms created before this feature
+existed simply have no `timezone` field, which resolves to UTC here -
+the exact behavior this module had before farm timezones existed, so old
+farms and old records are unaffected. An invalid/unrecognized timezone
+string also falls back to UTC rather than raising, since a bad value here
+must never break Flock Check submission.
 """
 
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def resolve_timezone(tz_name: str | None) -> ZoneInfo | timezone:
+    if not tz_name:
+        return timezone.utc
+    try:
+        return ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return timezone.utc
 
 
 def _parse(ts: str) -> datetime:
@@ -28,8 +44,10 @@ def find_check_for_period_on_date(
     target_date: date,
     *,
     before: datetime | None = None,
+    tz: ZoneInfo | timezone = timezone.utc,
 ) -> dict | None:
-    """Latest check of `period` recorded on `target_date` (UTC).
+    """Latest check of `period` recorded on `target_date`, evaluated in `tz`
+    (defaults to UTC for backward compatibility).
 
     `checks` need not be pre-filtered or pre-sorted. If `before` is given,
     only checks strictly earlier than it are considered (so a later check
@@ -44,7 +62,7 @@ def find_check_for_period_on_date(
             parsed = _parse(recorded_at)
         except (ValueError, TypeError):
             continue
-        if parsed.astimezone(timezone.utc).date() != target_date:
+        if parsed.astimezone(tz).date() != target_date:
             continue
         if before is not None and parsed >= before:
             continue
@@ -110,9 +128,16 @@ def compare_checks(morning: dict, later: dict) -> dict:
     }
 
 
-def build_morning_evening_comparison(recent_checks: list[dict], current_check: dict) -> dict | None:
+def build_morning_evening_comparison(
+    recent_checks: list[dict],
+    current_check: dict,
+    *,
+    farm_timezone: str | None = None,
+) -> dict | None:
     """Builds the comparison for `current_check` (an evening/emergency check)
-    against that day's morning check, if one exists.
+    against that day's morning check, if one exists - "that day" meaning
+    the farm's own local calendar day (`farm_timezone`, an IANA name like
+    "Africa/Accra"), not UTC's.
 
     `recent_checks` should be the house's recent checks (any order, may or
     may not include `current_check` itself - it's excluded by id). Returns
@@ -130,12 +155,14 @@ def build_morning_evening_comparison(recent_checks: list[dict], current_check: d
     except (ValueError, TypeError):
         return None
 
+    tz = resolve_timezone(farm_timezone)
     candidates = [c for c in recent_checks if c.get("id") != current_check.get("id")]
     morning = find_check_for_period_on_date(
         candidates,
         "morning",
-        current_dt.astimezone(timezone.utc).date(),
+        current_dt.astimezone(tz).date(),
         before=current_dt,
+        tz=tz,
     )
     if not morning:
         return None

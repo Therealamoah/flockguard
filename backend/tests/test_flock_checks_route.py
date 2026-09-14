@@ -200,3 +200,84 @@ def test_flock_check_for_nonexistent_house_returns_404(authed_client):
         json={"period": "morning", "bird_count": 10, "mortality": 0},
     )
     assert response.status_code == 404
+
+
+def test_critical_check_triggers_agent_investigation_end_to_end(authed_client, fake_db, monkeypatch):
+    """Full chain through the real route: gating decides a Critical check is
+    worth investigating, BackgroundTasks runs the agent (TestClient executes
+    background tasks synchronously), and a real agent_run + recommendation
+    land in Firestore - all without the AI call ever going anywhere real."""
+    import json
+
+    from app.core.refs import agent_recommendations_ref, agent_runs_ref
+    from app.services.grok_service import grok_service
+
+    farm_id, house_id = _setup_farm_house(authed_client)
+
+    async def _fake_chat_completion(messages, tools=None, tool_choice=None, response_format=None, model=None):
+        return {
+            "content": json.dumps(
+                {
+                    "priority": "urgent",
+                    "house_id": house_id,
+                    "summary": "House A is critical with sharply rising mortality.",
+                    "observed_data": ["Mortality 0 -> 30"],
+                    "calculated_signals": ["Risk score 100, critical"],
+                    "historical_context": [],
+                    "reference_guidance": [],
+                    "knowledge_sources": [],
+                    "recommended_actions": ["Inspect water and feed access immediately"],
+                    "confidence": "high",
+                    "requires_inspection": True,
+                    "requires_human_action": True,
+                }
+            ),
+            "tool_calls": None,
+        }
+
+    monkeypatch.setattr(grok_service, "chat_completion", _fake_chat_completion)
+
+    response = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={
+            "period": "emergency",
+            "bird_count": 1000,
+            "mortality": 30,
+            "sick_or_injured": 5,
+            "feed_kg": 5,
+            "water_level": "lower",
+            "activity": "lethargic",
+            "feeding_behaviour": "none",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["risk_status"] == "critical"
+
+    from tests.conftest import FAKE_UID  # authed_client's org_id defaults to its own uid
+
+    runs = list(agent_runs_ref(fake_db, FAKE_UID).stream())
+    assert len(runs) == 1
+    assert runs[0].to_dict()["trigger"] == "emergency_check_submitted"
+    assert runs[0].to_dict()["priority"] == "urgent"
+
+    recommendations = list(agent_recommendations_ref(fake_db, FAKE_UID).stream())
+    assert len(recommendations) == 1
+    assert recommendations[0].to_dict()["house_id"] == house_id
+
+
+def test_normal_check_does_not_trigger_agent_investigation(authed_client, fake_db):
+    """A Normal check must not spend an AI call - proven here by leaving
+    chat_completion unmocked (the autouse fail-fast fixture would surface
+    as a failed background task, but no agent_run should even be attempted)."""
+    from app.core.refs import agent_runs_ref
+    from tests.conftest import FAKE_UID
+
+    farm_id, house_id = _setup_farm_house(authed_client)
+    response = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={"period": "morning", "bird_count": 1000, "mortality": 1},
+    )
+    assert response.status_code == 201
+    assert response.json()["risk_status"] == "normal"
+
+    assert list(agent_runs_ref(fake_db, FAKE_UID).stream()) == []

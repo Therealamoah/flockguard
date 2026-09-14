@@ -33,6 +33,14 @@ export function getIdToken() {
   return auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null)
 }
 
+// A newly set custom claim (e.g. `org_id`, after accepting a team
+// invitation - see app/api/routes/team.py::accept_invitation) only shows
+// up on a freshly minted token. `getIdToken(true)` forces Firebase to
+// fetch one rather than reusing its cached token.
+export function forceRefreshToken() {
+  return auth.currentUser ? auth.currentUser.getIdToken(true) : Promise.resolve(null)
+}
+
 export function registerWithEmail(email, password) {
   return createUserWithEmailAndPassword(auth, email, password)
 }

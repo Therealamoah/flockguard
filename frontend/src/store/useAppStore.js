@@ -8,6 +8,7 @@ export const useAppStore = create((set, get) => ({
   currentHouseId: null,
   isBootstrapped: false,
   needsOnboarding: false,
+  pendingInvitations: [],
   isLoading: false,
   error: null,
 
@@ -16,7 +17,19 @@ export const useAppStore = create((set, get) => ({
     try {
       const farms = await api.farms.list()
       if (farms.length === 0) {
-        set({ farms: [], houses: [], needsOnboarding: true, isBootstrapped: true, isLoading: false })
+        // Before sending a brand-new user through farm creation, check
+        // whether they were actually invited onto an existing farm -
+        // team.myInvitations() is a collection-group lookup by their own
+        // verified email, so this never leaks another org's invitations.
+        const pendingInvitations = await api.team.myInvitations().catch(() => [])
+        set({
+          farms: [],
+          houses: [],
+          needsOnboarding: true,
+          pendingInvitations,
+          isBootstrapped: true,
+          isLoading: false,
+        })
         return
       }
       const currentFarmId = farms[0].id
@@ -27,6 +40,7 @@ export const useAppStore = create((set, get) => ({
         currentFarmId,
         currentHouseId: houses[0]?.id ?? null,
         needsOnboarding: false,
+        pendingInvitations: [],
         isBootstrapped: true,
         isLoading: false,
       })
@@ -60,6 +74,7 @@ export const useAppStore = create((set, get) => ({
       currentHouseId: null,
       isBootstrapped: false,
       needsOnboarding: false,
+      pendingInvitations: [],
       isLoading: false,
       error: null,
     })

@@ -2,7 +2,7 @@ export default function StatCard({ label, value, caption, captionColor, Icon, ic
   return (
     <div className="rounded-lg border border-hairline bg-surface p-4 shadow-sm">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-navy/50">{label}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-secondary">{label}</p>
         {Icon ? (
           <span
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"

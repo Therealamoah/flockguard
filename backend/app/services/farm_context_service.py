@@ -20,11 +20,12 @@ Design rules, followed throughout:
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from google.cloud.firestore import Client, Query
 
 from app.core.refs import alerts_ref, farms_ref, flock_checks_ref, flocks_ref, houses_ref, inspections_ref
+from app.services.comparison_service import resolve_timezone
 from app.services.trend_service import detect_trends
 
 DEFAULT_HISTORY_LIMIT = 7
@@ -146,15 +147,25 @@ def get_latest_flock_check(db: Client, org_id: str, farm_id: str, house_id: str)
 
 
 def get_check_for_period_today(
-    db: Client, org_id: str, farm_id: str, house_id: str, period: str, on_date: date | None = None
+    db: Client,
+    org_id: str,
+    farm_id: str,
+    house_id: str,
+    period: str,
+    on_date: date | None = None,
+    *,
+    tz_name: str | None = None,
 ) -> dict | None:
     """`get_todays_morning_check` / `get_todays_evening_check` - both are this
-    function with period="morning"/"evening"."""
-    target_date = on_date or datetime.now(timezone.utc).date()
+    function with period="morning"/"evening". "Today"/"on_date" is evaluated
+    in the farm's own timezone (`tz_name`, an IANA identifier) when given;
+    farms without one yet fall back to UTC, matching prior behavior."""
+    tz = resolve_timezone(tz_name)
+    target_date = on_date or datetime.now(tz).date()
     for check in get_flock_history(db, org_id, farm_id, house_id, limit=20):
         if check.get("period") != period or not check.get("recorded_at"):
             continue
-        recorded_date = datetime.fromisoformat(check["recorded_at"]).astimezone(timezone.utc).date()
+        recorded_date = datetime.fromisoformat(check["recorded_at"]).astimezone(tz).date()
         if recorded_date == target_date:
             return check
     return None
@@ -209,6 +220,41 @@ def get_recent_inspections(db: Client, org_id: str, farm_id: str, house_id: str,
     return [_trim_inspection({"id": d.id, **d.to_dict()}) for d in docs]
 
 
+def get_previous_similar_inspections(
+    db: Client,
+    org_id: str,
+    farm_id: str,
+    house_id: str,
+    finding_category: str | None = None,
+    limit: int = 5,
+) -> list[dict]:
+    """Structured similarity for MVP - same house, optionally the same
+    finding_category - deliberately not a vector-similarity search. At
+    the scale of one farm's inspection history, "same house + same
+    category" is both simpler and more explainable to a farmer than an
+    embedding-based match, and needs no new infrastructure."""
+    inspections = get_recent_inspections(db, org_id, farm_id, house_id, limit=25)
+    if finding_category:
+        inspections = [i for i in inspections if i.get("finding_category") == finding_category]
+    return inspections[:limit]
+
+
+def get_unresolved_priorities(db: Client, org_id: str, farm_id: str) -> list[dict]:
+    """Houses with an active (non-resolved) alert that has no inspection
+    linked to it yet - flagged, but not yet followed up on."""
+    results = []
+    for house in list_houses(db, org_id, farm_id):
+        alerts = get_active_alerts(db, org_id, farm_id, house["id"])
+        if not alerts:
+            continue
+        recent_inspections = get_recent_inspections(db, org_id, farm_id, house["id"], limit=10)
+        linked_alert_ids = {i.get("alert_id") for i in recent_inspections if i.get("alert_id")}
+        for alert in alerts:
+            if alert["id"] not in linked_alert_ids:
+                results.append({"house_id": house["id"], "house_name": house.get("name"), "alert": alert})
+    return results
+
+
 def get_house_comparison(db: Client, org_id: str, farm_id: str) -> list[dict]:
     """Latest risk score per house in a farm, worst-first - the same shape
     the AI Health Radar uses (app/api/routes/analytics.py::compare_houses),
@@ -233,13 +279,15 @@ def get_house_status(db: Client, org_id: str, farm_id: str, house_id: str) -> di
     house = _doc(houses_ref(db, org_id, farm_id).document(house_id))
     if not house:
         return None
+    farm = get_farm(db, org_id, farm_id)
+    tz_name = farm.get("timezone") if farm else None
     history = get_flock_history(db, org_id, farm_id, house_id, limit=DEFAULT_HISTORY_LIMIT)
     return {
         "house": house,
         "flock": get_current_flock(db, org_id, farm_id, house_id),
         "latest_check": history[0] if history else None,
-        "morning_check_today": get_check_for_period_today(db, org_id, farm_id, house_id, "morning"),
-        "evening_check_today": get_check_for_period_today(db, org_id, farm_id, house_id, "evening"),
+        "morning_check_today": get_check_for_period_today(db, org_id, farm_id, house_id, "morning", tz_name=tz_name),
+        "evening_check_today": get_check_for_period_today(db, org_id, farm_id, house_id, "evening", tz_name=tz_name),
         "recent_history": history,
         "active_alerts": get_active_alerts(db, org_id, farm_id, house_id),
         "recent_inspections": get_recent_inspections(db, org_id, farm_id, house_id, limit=3),
@@ -251,14 +299,15 @@ def get_farm_status(db: Client, org_id: str, farm_id: str) -> dict | None:
     farm = get_farm(db, org_id, farm_id)
     if not farm:
         return None
+    tz_name = farm.get("timezone")
     houses = list_houses(db, org_id, farm_id)
     comparison = get_house_comparison(db, org_id, farm_id)
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(resolve_timezone(tz_name)).date()
 
     missing_morning_checks = [
         house["name"]
         for house in houses
-        if get_check_for_period_today(db, org_id, farm_id, house["id"], "morning", today) is None
+        if get_check_for_period_today(db, org_id, farm_id, house["id"], "morning", today, tz_name=tz_name) is None
     ]
     checked = [h for h in comparison if h["risk_score"] is not None]
     stable = [h for h in checked if h["risk_status"] == "normal"]

@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from google.cloud.firestore import Client
 
 from app.core.config import settings
 from app.core.deps import get_current_org_id
+from app.core.firestore import get_firestore_client
 from app.core.limiter import limiter
 from app.models.schemas import MediaUploadResponse
 from app.services.cloudinary_service import upload_media
+from app.services.grok_service import grok_service
 from app.services.media_validation import validate_upload
+from app.services.usage_service import increment_storage_bytes
 
 router = APIRouter(prefix="/media", tags=["media"])
 
@@ -22,6 +26,7 @@ async def upload(
     file: UploadFile = File(...),
     resource_type: str = "image",
     org_id: str = Depends(get_current_org_id),
+    db: Client = Depends(get_firestore_client),
 ):
     """Uploads a Flock Check photo or audio recording to Cloudinary.
 
@@ -39,4 +44,10 @@ async def upload(
     validate_upload(file_bytes, file.content_type, _VALIDATION_KIND[resource_type])
 
     result = upload_media(file_bytes, folder=f"flockguard/{org_id}", resource_type=resource_type)
-    return MediaUploadResponse(**result)
+    increment_storage_bytes(db, org_id, len(file_bytes))
+
+    transcript = None
+    if resource_type == "video":  # audio - see ALLOWED_RESOURCE_TYPES comment above
+        transcript = await grok_service.transcribe(file_bytes, file.filename or "voice-note", file.content_type)
+
+    return MediaUploadResponse(**result, transcript=transcript)

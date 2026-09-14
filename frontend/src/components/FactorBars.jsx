@@ -4,7 +4,7 @@ import { statusFromScore, statusMeta } from '../lib/risk'
 // overall score, so it doubles directly as this factor's bar-fill percent.
 export default function FactorBars({ factors, emptyMessage = 'No risk factors detected — everything looks normal.' }) {
   if (!factors || factors.length === 0) {
-    return <p className="text-sm text-navy/60">{emptyMessage}</p>
+    return <p className="text-sm text-secondary">{emptyMessage}</p>
   }
 
   return (
@@ -14,7 +14,7 @@ export default function FactorBars({ factors, emptyMessage = 'No risk factors de
         const color = statusMeta(statusFromScore(pct)).color
         return (
           <div key={f.key} className="flex items-center gap-3">
-            <span className="w-40 shrink-0 text-sm text-navy/70">{f.label}</span>
+            <span className="w-40 shrink-0 text-sm text-secondary">{f.label}</span>
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-hairline">
               <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
             </div>

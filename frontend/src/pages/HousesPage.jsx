@@ -12,6 +12,7 @@ export default function HousesPage() {
   const [name, setName] = useState('')
   const [capacity, setCapacity] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [createError, setCreateError] = useState('')
 
   useEffect(() => {
     if (!currentFarmId) return
@@ -24,6 +25,7 @@ export default function HousesPage() {
 
   async function handleCreate(e) {
     e.preventDefault()
+    setCreateError('')
     setIsSubmitting(true)
     try {
       await api.houses.create(currentFarmId, { name, bird_capacity: capacity ? Number(capacity) : null })
@@ -31,6 +33,8 @@ export default function HousesPage() {
       setCapacity('')
       setShowForm(false)
       await refreshHouses()
+    } catch (err) {
+      setCreateError(err.detail || 'Could not add this house.')
     } finally {
       setIsSubmitting(false)
     }
@@ -45,7 +49,7 @@ export default function HousesPage() {
           </span>
           <div>
             <h1 className="font-display text-2xl font-extrabold text-navy">Houses</h1>
-            <p className="text-sm text-navy/60">Every poultry house on your farm.</p>
+            <p className="text-sm text-secondary">Every poultry house on your farm.</p>
           </div>
         </div>
         <button
@@ -87,13 +91,14 @@ export default function HousesPage() {
           >
             {isSubmitting ? 'Adding...' : 'Save'}
           </button>
+          {createError ? <p className="w-full text-sm text-critical">{createError}</p> : null}
         </form>
       ) : null}
 
       {houses.length === 0 ? (
         <div className="mt-6 flex flex-col items-center gap-2 rounded-xl border border-hairline bg-surface py-16 text-center shadow-sm">
-          <Warehouse size={28} className="text-navy/20" />
-          <p className="text-sm text-navy/50">No houses yet. Add your first one to get started.</p>
+          <Warehouse size={28} className="text-muted" />
+          <p className="text-sm text-secondary">No houses yet. Add your first one to get started.</p>
         </div>
       ) : (
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -113,20 +118,20 @@ export default function HousesPage() {
                     <div>
                       <p className="font-display text-base font-bold text-navy">{house.name}</p>
                       {house.bird_capacity ? (
-                        <p className="mt-0.5 flex items-center gap-1 text-xs text-navy/50">
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-secondary">
                           <Users size={11} />
                           Capacity {house.bird_capacity.toLocaleString()} birds
                         </p>
                       ) : null}
                     </div>
                   </div>
-                  <ChevronRight size={16} className="mt-2 shrink-0 text-navy/25 transition-transform group-hover:translate-x-0.5" />
+                  <ChevronRight size={16} className="mt-2 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
                 </div>
                 <div className="mt-4 border-t border-hairline pt-3">
                   {r?.risk_score != null ? (
                     <StatusBadge status={r.risk_status} score={r.risk_score} size="sm" />
                   ) : (
-                    <span className="text-xs text-navy/40">No checks yet</span>
+                    <span className="text-xs text-muted">No checks yet</span>
                   )}
                 </div>
               </Link>

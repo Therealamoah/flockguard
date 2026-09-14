@@ -37,21 +37,21 @@ export default function RadarPage() {
         </span>
         <div>
           <h1 className="font-display text-2xl font-extrabold text-navy">AI Health Radar</h1>
-          <p className="text-sm text-navy/60">Which poultry house should I inspect first?</p>
+          <p className="text-sm text-secondary">Which poultry house should I inspect first?</p>
         </div>
       </div>
 
       <div className="mt-6 flex flex-col gap-6 lg:flex-row">
         <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-hairline bg-surface p-6 shadow-sm">
           {isLoading ? (
-            <div className="flex items-center gap-2 py-16 text-sm text-navy/50">
+            <div className="flex items-center gap-2 py-16 text-sm text-secondary">
               <Loader2 size={16} className="animate-spin" />
               Loading radar...
             </div>
           ) : checked.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-16 text-center">
-              <Radar size={28} className="text-navy/20" />
-              <p className="text-sm text-navy/50">No Flock Checks recorded yet.</p>
+              <Radar size={28} className="text-muted" />
+              <p className="text-sm text-secondary">No Flock Checks recorded yet.</p>
             </div>
           ) : (
             <RadarCanvas houses={checked} size={360} showLegend onSelectHouse={(id) => navigate(`/houses/${id}`)} />
@@ -59,7 +59,7 @@ export default function RadarPage() {
         </div>
 
         <div className="w-full rounded-xl border border-hairline bg-surface p-5 shadow-sm lg:w-80">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-navy/50">Priority Queue</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-secondary">Priority Queue</h2>
           <ol className="mt-3 space-y-1.5">
             {houses.map((house, i) => {
               const meta = statusMeta(house.risk_status)
@@ -71,7 +71,7 @@ export default function RadarPage() {
                     onClick={() => navigate(`/houses/${house.house_id}`)}
                     className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-forest/5"
                   >
-                    <span className="w-5 shrink-0 font-display text-xs font-bold text-navy/30">
+                    <span className="w-5 shrink-0 font-display text-xs font-bold text-muted">
                       {String(i + 1).padStart(2, '0')}
                     </span>
                     <span
@@ -82,20 +82,23 @@ export default function RadarPage() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-navy">{house.house_name}</span>
-                      <span className="mt-0.5 flex items-center gap-1">
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                         <StatusBadge status={house.risk_status} size="sm" pill />
                         {inspectNow ? (
-                          <span className="flex items-center gap-0.5 text-xs font-semibold text-critical">
-                            <AlertTriangle size={11} />
+                          <span className="flex items-center gap-0.5 whitespace-nowrap text-xs font-semibold text-critical">
+                            <AlertTriangle size={11} className="shrink-0" />
                             Inspect now
                           </span>
                         ) : null}
                       </span>
                     </span>
-                    <span className="font-display text-lg font-extrabold" style={{ color: meta.color }}>
+                    <span
+                      className="shrink-0 font-display text-lg font-extrabold"
+                      style={{ color: meta.color }}
+                    >
                       {house.risk_score ?? '—'}
                     </span>
-                    <ChevronRight size={16} className="shrink-0 text-navy/25" />
+                    <ChevronRight size={16} className="shrink-0 text-muted" />
                   </button>
                 </li>
               )

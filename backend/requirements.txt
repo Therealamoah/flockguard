@@ -8,6 +8,13 @@ cloudinary==1.41.0
 httpx==0.28.1
 python-multipart==0.0.19
 slowapi==0.1.10
+aiosmtplib==3.0.2
+# Python's zoneinfo module (used for farm timezones - app/services/
+# comparison_service.py) needs the IANA tz database. Linux/Render ships
+# it at the OS level; Windows doesn't, so this pure-data package is
+# required for local Windows dev and is a safe no-op elsewhere.
+tzdata==2026.3
 
 # Dev/test only
 pytest==9.1.1
+pytest-asyncio==1.4.0

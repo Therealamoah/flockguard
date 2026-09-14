@@ -1,9 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
+
+/* Class-based dark mode (toggled via useThemeStore, not just OS preference)
+- every color below is a CSS variable, so flipping them under .dark is
+enough to retheme the whole app without touching any component. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-display: 'Manrope', system-ui, sans-serif;
-  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-sans: 'Manrope', system-ui, sans-serif;
 
   /* Primary */
   --color-forest: #1b4332;
@@ -11,6 +16,13 @@
 
   /* Secondary */
   --color-navy: #16222b;
+
+  /* Text - solid, deliberate shades (never alpha-blended - a faded/
+  translucent color reads as washed-out rather than an intentional tone).
+  --color-secondary is body-level secondary text; --color-muted is for
+  captions, placeholders, and least-emphasis labels. */
+  --color-secondary: #475569;
+  --color-muted: #64748b;
 
   /* Background / surface */
   --color-bg: #f6f5f1;
@@ -27,12 +39,36 @@
   --color-ai: #6c63d6;
 }
 
+/* Dark theme - "black with a pitch of forest green": a near-black ground
+with a faint green undertone, the forest accent brightened so it still
+reads as a clear accent against it, and every text tier flipped light.
+Every color the app uses is one of the variables below, so this block is
+the entire dark theme - no component needs a `dark:` class of its own. */
+:root.dark {
+  --color-bg: #0a0f0c;
+  --color-surface: #121815;
+  --color-hairline: #223029;
+
+  --color-navy: #edf2ef;
+  --color-secondary: #a6b3ad;
+  --color-muted: #76847e;
+
+  --color-forest: #35c67d;
+
+  --color-normal: #3ecb78;
+  --color-watch: #dba53f;
+  --color-warning: #e2813f;
+  --color-critical: #e2564b;
+  --color-ai: #8f86f2;
+}
+
 body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-navy);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 h1, h2, h3, .font-display {
@@ -42,5 +78,19 @@ h1, h2, h3, .font-display {
 @keyframes radar-sweep {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* One calm breathing cycle for the logo loader - deliberately slow and
+subtle (not a spin/flicker), and used as a single centered instance per
+loading screen, never repeated across a page. */
+@keyframes logo-breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.75;
   }
 }

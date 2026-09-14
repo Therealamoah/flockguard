@@ -3,7 +3,7 @@ import LogoMark from './Logo'
 export function IconField({ icon: Icon, ...props }) {
   return (
     <div className="relative">
-      <Icon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-navy/40" />
+      <Icon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
       <input
         {...props}
         className="w-full rounded-lg border border-hairline py-2.5 pl-10 pr-3 text-sm outline-none focus:border-forest"
@@ -22,11 +22,11 @@ export default function AuthShell({ title, subtitle, children, footer }) {
         </div>
 
         <h1 className="text-center font-display text-2xl font-extrabold text-navy">{title}</h1>
-        {subtitle ? <p className="mt-1 text-center text-sm text-navy/60">{subtitle}</p> : null}
+        {subtitle ? <p className="mt-1 text-center text-sm text-secondary">{subtitle}</p> : null}
 
         <div className="mt-6">{children}</div>
 
-        {footer ? <p className="mt-6 text-center text-sm text-navy/70">{footer}</p> : null}
+        {footer ? <p className="mt-6 text-center text-sm text-secondary">{footer}</p> : null}
       </div>
     </div>
   )
