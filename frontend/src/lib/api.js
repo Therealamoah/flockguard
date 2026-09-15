@@ -118,6 +118,10 @@ export const api = {
     unarchiveFarm: (farmId) => post(`/settings/farms/${farmId}/unarchive`),
     deleteFarm: (farmId, confirmation) => post(`/settings/farms/${farmId}/delete`, { confirmation }),
   },
+  push: {
+    register: (token) => post('/settings/push-token', { token }),
+    unregister: (token) => post('/settings/push-token/unregister', { token }),
+  },
   billing: {
     get: () => get('/billing'),
     usage: () => get('/billing/usage'),

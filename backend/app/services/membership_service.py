@@ -83,6 +83,19 @@ def get_notification_emails(db: Client, org_id: str) -> list[str]:
     return emails
 
 
+def get_notification_uids(db: Client, org_id: str) -> list[str]:
+    """Same audience as get_notification_emails (active owners/managers) but
+    as member uids - used by app/services/push_service.py to look up each
+    person's registered push tokens, which are stored per-uid, not
+    per-email."""
+    uids = []
+    for doc in members_ref(db, org_id).where("status", "==", "active").stream():
+        data = doc.to_dict()
+        if data.get("role") in (Role.OWNER.value, Role.MANAGER.value):
+            uids.append(doc.id)
+    return uids
+
+
 def set_org_claim(uid: str, org_id: str) -> None:
     """Grants org access on the invited user's Firebase Auth token.
 

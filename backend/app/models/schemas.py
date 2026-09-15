@@ -222,6 +222,10 @@ class AIPreferences(BaseModel):
     proactive_insights_enabled: bool = True
 
 
+class PushTokenRequest(BaseModel):
+    token: str
+
+
 class FarmSettingsUpdate(BaseModel):
     """PATCH semantics - every field optional, only supplied ones change."""
 

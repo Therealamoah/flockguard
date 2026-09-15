@@ -19,7 +19,9 @@ from app.core.firebase import get_current_user
 from app.core.firestore import get_firestore_client
 from app.core.permissions import get_current_membership, require_manager_or_owner, require_owner
 from app.core.refs import farms_ref
-from app.models.schemas import AccountUpdate, DeleteFarmRequest, FarmSettingsUpdate
+from app.models.schemas import AccountUpdate, DeleteFarmRequest, FarmSettingsUpdate, PushTokenRequest
+from app.services.notification_service import DEFAULT_NOTIFICATION_PREFERENCES
+from app.services.push_service import register_token, unregister_token
 
 router = APIRouter(tags=["settings"])
 
@@ -38,18 +40,11 @@ DEFAULT_SETTINGS = {
     "evening_check_enabled": True,
     "evening_check_start": "16:00",
     "evening_check_end": "20:00",
-    "notification_preferences": {
-        "critical_alerts": True,
-        "warning_alerts": True,
-        "watch_alerts": False,
-        "morning_check_reminder": True,
-        "evening_check_reminder": True,
-        "daily_farm_brief": True,
-        # Only in_app is real. push/email default False (not built yet);
-        # whatsapp/sms are permanently "coming_soon" - never advertise a
-        # channel as working before a provider is actually wired up.
-        "channels": {"in_app": True, "push": False, "email": False, "whatsapp": "coming_soon", "sms": "coming_soon"},
-    },
+    # Shared with app/services/notification_service.py, which is what
+    # actually gates whether a new alert emails anyone - kept as one
+    # definition so this page can never show "Email: Available" while the
+    # alert-sending code disagrees, or vice versa.
+    "notification_preferences": DEFAULT_NOTIFICATION_PREFERENCES,
     "ai_preferences": {
         "ai_explanations_enabled": True,
         "daily_ai_brief_enabled": True,
@@ -117,6 +112,31 @@ def update_account(
     No org role required; nothing here touches organization data."""
     firebase_auth.update_user(user["uid"], display_name=payload.display_name)
     return {"display_name": payload.display_name}
+
+
+@router.post("/settings/push-token")
+def register_push_token(
+    payload: PushTokenRequest,
+    membership: dict = Depends(get_current_membership),
+    db: Client = Depends(get_firestore_client),
+):
+    """Registers this browser/device to receive push notifications for the
+    caller's own org membership. Any active member can register a device -
+    whether it actually receives anything is decided at send time by
+    app/services/membership_service.get_notification_uids (owners/managers
+    only) and the farm's Push channel toggle, same as email."""
+    register_token(db, org_id=membership["org_id"], uid=membership["id"], token=payload.token)
+    return {"registered": True}
+
+
+@router.post("/settings/push-token/unregister")
+def unregister_push_token(
+    payload: PushTokenRequest,
+    membership: dict = Depends(get_current_membership),
+    db: Client = Depends(get_firestore_client),
+):
+    unregister_token(db, org_id=membership["org_id"], uid=membership["id"], token=payload.token)
+    return {"registered": False}
 
 
 @router.post("/settings/farms/{farm_id}/archive")

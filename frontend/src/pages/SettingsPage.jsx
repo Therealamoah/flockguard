@@ -19,6 +19,7 @@ import { useAuthStore } from '../store/useAuthStore'
 import { useAppStore } from '../store/useAppStore'
 import { logout } from '../lib/firebase'
 import { api } from '../lib/api'
+import { enablePushNotifications, disablePushNotifications } from '../lib/push'
 
 const TABS = [
   { key: 'profile', label: 'Farm Profile', Icon: MapPin },
@@ -29,20 +30,27 @@ const TABS = [
   { key: 'danger', label: 'Danger Zone', Icon: AlertTriangle },
 ]
 
-// A practical, not-exhaustive shortlist - the timezone field itself is a
-// free-text IANA identifier server-side, this is just a friendly picker.
-const TIMEZONES = [
-  'Africa/Accra',
-  'Africa/Lagos',
-  'Africa/Nairobi',
-  'Africa/Johannesburg',
-  'Africa/Cairo',
-  'Europe/London',
-  'America/New_York',
-  'America/Los_Angeles',
-  'Asia/Dubai',
-  'Asia/Kolkata',
-]
+// The full IANA tz database, via the browser itself - the backend already
+// validates against real IANA identifiers (ZoneInfo, see
+// FarmSettingsUpdate._validate_timezone), so the picker should offer every
+// zone it would accept, not a hand-picked shortlist. Falls back to a short,
+// practical list for the rare browser without Intl.supportedValuesOf
+// (Safari < 15.4) so the field still works, just with fewer choices.
+const TIMEZONES =
+  typeof Intl.supportedValuesOf === 'function'
+    ? Intl.supportedValuesOf('timeZone')
+    : [
+        'Africa/Accra',
+        'Africa/Lagos',
+        'Africa/Nairobi',
+        'Africa/Johannesburg',
+        'Africa/Cairo',
+        'Europe/London',
+        'America/New_York',
+        'America/Los_Angeles',
+        'Asia/Dubai',
+        'Asia/Kolkata',
+      ]
 
 function SaveButton({ status, disabled }) {
   return (
@@ -288,6 +296,26 @@ function CheckScheduleTab({ settings, canEdit, onSave }) {
 function NotificationsTab({ settings, canEdit, onSave }) {
   const [prefs, setPrefs] = useState(settings.notification_preferences)
   const [status, setStatus] = useState('idle')
+  const [pushStatus, setPushStatus] = useState('idle') // idle | requesting | error
+  const [pushError, setPushError] = useState('')
+
+  async function handlePushToggle(checked) {
+    if (!checked) {
+      setPrefs((p) => ({ ...p, channels: { ...p.channels, push: false } }))
+      disablePushNotifications()
+      return
+    }
+    setPushStatus('requesting')
+    setPushError('')
+    try {
+      await enablePushNotifications()
+      setPrefs((p) => ({ ...p, channels: { ...p.channels, push: true } }))
+      setPushStatus('idle')
+    } catch (err) {
+      setPushStatus('error')
+      setPushError(err.message || 'Could not enable push notifications on this device.')
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -328,35 +356,50 @@ function NotificationsTab({ settings, canEdit, onSave }) {
 
       <div>
         <h3 className="text-sm font-bold text-navy">Channels</h3>
+        <p className="mt-1 text-xs text-secondary">
+          Email and Push send when a new alert opens, based on the severity toggles above.
+        </p>
         <div className="mt-2 space-y-2 rounded-xl border border-hairline p-4">
           <div className="flex items-center justify-between text-sm">
             <span className="text-navy">In-app</span>
             <span className="rounded-full bg-normal/10 px-2 py-0.5 text-xs font-semibold text-normal">Available</span>
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-secondary">Push</span>
-            <span className="rounded-full bg-hairline/70 px-2 py-0.5 text-xs font-semibold text-secondary">
-              Not available
-            </span>
+          <div>
+            <label className="flex items-center justify-between text-sm text-navy">
+              <span className="flex items-center gap-1.5">
+                Push
+                <span className="rounded-full bg-normal/10 px-1.5 py-0.5 text-[10px] font-semibold text-normal">
+                  Available
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                disabled={!canEdit || pushStatus === 'requesting'}
+                checked={Boolean(prefs.channels?.push)}
+                onChange={(e) => handlePushToggle(e.target.checked)}
+              />
+            </label>
+            {pushStatus === 'requesting' ? (
+              <p className="mt-1 text-xs text-secondary">Requesting notification permission...</p>
+            ) : null}
+            {pushStatus === 'error' ? <p className="mt-1 text-xs text-critical">{pushError}</p> : null}
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-secondary">Email</span>
-            <span className="rounded-full bg-hairline/70 px-2 py-0.5 text-xs font-semibold text-secondary">
-              Not available
+          <label className="flex items-center justify-between text-sm text-navy">
+            <span className="flex items-center gap-1.5">
+              Email
+              <span className="rounded-full bg-normal/10 px-1.5 py-0.5 text-[10px] font-semibold text-normal">
+                Available
+              </span>
             </span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-secondary">WhatsApp</span>
-            <span className="rounded-full bg-hairline/70 px-2 py-0.5 text-xs font-semibold text-secondary">
-              Coming Soon
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-secondary">SMS</span>
-            <span className="rounded-full bg-hairline/70 px-2 py-0.5 text-xs font-semibold text-secondary">
-              Coming Soon
-            </span>
-          </div>
+            <input
+              type="checkbox"
+              disabled={!canEdit}
+              checked={Boolean(prefs.channels?.email)}
+              onChange={(e) =>
+                setPrefs((p) => ({ ...p, channels: { ...p.channels, email: e.target.checked } }))
+              }
+            />
+          </label>
         </div>
       </div>
 
@@ -527,6 +570,8 @@ function DangerZoneTab({ farmId, farmName, isOwner, settings, setSettings }) {
         const result = await api.settings.archiveFarm(farmId)
         setSettings((prev) => ({ ...prev, archived: result.archived }))
       }
+    } catch {
+      setMessage('Could not update the farm right now. Try again.')
     } finally {
       setIsBusy(false)
     }

@@ -16,7 +16,9 @@ from app.risk_engine.models import FlockCheckInput, HouseBaseline
 from app.services.alert_engine import sync_alert_for_check
 from app.services.comparison_service import build_morning_evening_comparison
 from app.services.email_service import send_alert_email
-from app.services.membership_service import get_notification_emails
+from app.services.membership_service import get_notification_emails, get_notification_uids
+from app.services.notification_service import alert_email_enabled, push_enabled
+from app.services.push_service import send_push_to_uids
 
 # Maps a check's period to the agent trigger name it fires -
 # app/agent/agent_router.py decides which skill (if any) responds to each.
@@ -78,25 +80,47 @@ def _proactive_investigation_enabled(farm: dict) -> bool:
     return farm.get("ai_preferences", {}).get("proactive_insights_enabled", True)
 
 
-async def _notify_new_alert(db: Client, *, org_id: str, farm_id: str, house_id: str, farm_name: str, alert: dict) -> None:
+async def _notify_new_alert(db: Client, *, org_id: str, farm_id: str, house_id: str, farm: dict, alert: dict) -> None:
     """Runs as a background task (see the add_task call below) so a slow or
-    failing email send never delays the check-submission response - fires
-    only when sync_alert_for_check just OPENED a new alert, not on every
-    later check that keeps an already-open one alive, so one ongoing issue
-    doesn't turn into a flood of near-duplicate emails."""
-    to_emails = get_notification_emails(db, org_id)
-    if not to_emails:
-        return
+    failing send never delays the check-submission response - fires only
+    when sync_alert_for_check just OPENED a new alert, not on every later
+    check that keeps an already-open one alive, so one ongoing issue
+    doesn't turn into a flood of near-duplicate notifications.
+
+    Each channel (Email, Push) is gated independently on the farm's own
+    notification preferences (Settings -> Notifications -> Channels): both
+    that channel and the alert's own severity toggle
+    (critical/warning/watch_alerts) must be on - see
+    app/services/notification_service.py, which is the single source of
+    truth this and GET /settings both read so they can't disagree about
+    what "Email/Push: Available" actually means."""
     house_doc = houses_ref(db, org_id, farm_id).document(house_id).get()
     house_name = house_doc.to_dict().get("name", "A house") if house_doc.exists else "A house"
-    await send_alert_email(
-        to_emails=to_emails,
-        farm_name=farm_name or "your farm",
-        house_name=house_name,
-        status=alert["status"],
-        score=alert["score"],
-        factors=[f["label"] for f in alert.get("factors", [])],
-    )
+    farm_name = farm.get("name") or "your farm"
+
+    if alert_email_enabled(farm, alert["status"]):
+        to_emails = get_notification_emails(db, org_id)
+        if to_emails:
+            await send_alert_email(
+                to_emails=to_emails,
+                farm_name=farm_name,
+                house_name=house_name,
+                status=alert["status"],
+                score=alert["score"],
+                factors=[f["label"] for f in alert.get("factors", [])],
+            )
+
+    if push_enabled(farm, alert["status"]):
+        uids = get_notification_uids(db, org_id)
+        if uids:
+            send_push_to_uids(
+                db,
+                org_id=org_id,
+                uids=uids,
+                title=f"{house_name} needs attention",
+                body=f"{farm_name} is now at {alert['status'].capitalize()} risk (score {alert['score']}).",
+                url=f"{settings.app_public_url}/alerts",
+            )
 
 
 @router.post("", response_model=FlockCheckResponse, status_code=201)
@@ -195,7 +219,7 @@ def submit_flock_check(
             org_id=org_id,
             farm_id=farm_id,
             house_id=house_id,
-            farm_name=farm.get("name"),
+            farm=farm,
             alert=alert_result["alert"],
         )
 

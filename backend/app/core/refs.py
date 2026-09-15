@@ -42,6 +42,14 @@ def invitations_ref(db: Client, org_id: str) -> CollectionReference:
     return organization_ref(db, org_id).collection("invitations")
 
 
+def push_tokens_ref(db: Client, org_id: str, uid: str) -> CollectionReference:
+    """One member's registered browser/device push tokens - a person can have
+    several (phone + laptop), so this is a subcollection keyed by the token
+    itself (doc id = token), not a single field, and set/delete are natural
+    upsert/remove operations without ever needing a read-modify-write."""
+    return members_ref(db, org_id).document(uid).collection("push_tokens")
+
+
 def subscription_ref(db: Client, org_id: str):
     """Single document (`current`) rather than a bare field on the org
     document, so future plan-history/upgrade records have a natural place

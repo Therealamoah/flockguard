@@ -26,6 +26,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useThemeStore } from '../store/useThemeStore'
 import { logout } from '../lib/firebase'
 import { api } from '../lib/api'
+import { onForegroundPush } from '../lib/push'
 import { displayName, initialsFor } from '../lib/format'
 
 const NAV = [
@@ -53,6 +54,20 @@ const MOBILE_NAV = [
   { to: '/ask', label: 'AI', Icon: Sparkles },
 ]
 
+const PUSH_TOAST_LIFETIME_MS = 8000
+
+/** The backend sends the click-through URL as a full absolute URL (see
+ * app.core.config.settings.app_public_url in push_service.py) since the
+ * same value is reused for email links - react-router's navigate() wants
+ * an in-app path, not a scheme+host, so this strips it down. */
+function pathFromPushUrl(url) {
+  try {
+    return new URL(url).pathname
+  } catch {
+    return url || '/alerts'
+  }
+}
+
 function navLinkClass(expanded) {
   return ({ isActive }) =>
     [
@@ -67,6 +82,7 @@ export default function AppLayout() {
   const [openAlertCount, setOpenAlertCount] = useState(0)
   const [sidebarPeek, setSidebarPeek] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [pushToasts, setPushToasts] = useState([])
   const hideTimeoutRef = useRef(null)
   const { user } = useAuthStore()
   const { currentFarmId } = useAppStore()
@@ -103,6 +119,41 @@ export default function AppLayout() {
       cancelled = true
     }
   }, [currentFarmId])
+
+  // Push notifications only produce a visible OS popup when the tab is
+  // closed/backgrounded (see public/firebase-messaging-sw.js) - a push that
+  // arrives while someone's already looking at FlockGuard is delivered here
+  // instead (Firebase's "foreground message" path), so without this it
+  // would otherwise silently do nothing.
+  useEffect(() => {
+    let unsubscribe = () => {}
+    let cancelled = false
+    onForegroundPush((payload) => {
+      // Sent as a data-only message (see app/services/push_service.py) so
+      // this always fires reliably instead of sometimes being routed to
+      // the service worker's onBackgroundMessage even while focused.
+      const { title, body, url } = payload.data || {}
+      const id = `${Date.now()}-${Math.random()}`
+      setPushToasts((prev) => [...prev, { id, title: title || 'FlockGuard', body, url }])
+      setTimeout(() => setPushToasts((prev) => prev.filter((t) => t.id !== id)), PUSH_TOAST_LIFETIME_MS)
+    }).then((unsub) => {
+      if (cancelled) unsub()
+      else unsubscribe = unsub
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [])
+
+  function dismissPushToast(id) {
+    setPushToasts((prev) => prev.filter((t) => t.id !== id))
+  }
+
+  function openPushToast(toast) {
+    dismissPushToast(toast.id)
+    navigate(pathFromPushUrl(toast.url))
+  }
 
   async function handleLogout() {
     await logout()
@@ -346,6 +397,35 @@ export default function AppLayout() {
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {pushToasts.length > 0 ? (
+        <div className="fixed right-4 top-4 z-40 w-80 max-w-[calc(100vw-2rem)] space-y-2">
+          {pushToasts.map((toast) => (
+            <div
+              key={toast.id}
+              onClick={() => openPushToast(toast)}
+              className="cursor-pointer rounded-xl border border-hairline bg-surface p-4 shadow-lg"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-navy">{toast.title}</p>
+                  {toast.body ? <p className="mt-0.5 text-xs text-secondary">{toast.body}</p> : null}
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    dismissPushToast(toast.id)
+                  }}
+                  className="shrink-0 text-secondary hover:text-navy"
+                  aria-label="Dismiss"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       ) : null}
     </div>

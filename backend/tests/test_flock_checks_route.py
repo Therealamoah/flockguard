@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import app.api.routes.flock_checks as flock_checks_module
+from tests.conftest import FAKE_UID
 
 
 class _FixedClock:
@@ -297,6 +298,12 @@ def test_new_alert_emails_the_orgs_owners_and_managers(authed_client, monkeypatc
 
     authed_client.get("/team")  # backfills the owner's own membership doc (get_current_org_id alone never does)
     farm_id, house_id = _setup_farm_house(authed_client)
+    # Email notifications default to off (opt-in) - turn them on for this
+    # farm, same as a farmer would in Settings -> Notifications -> Channels.
+    authed_client.patch(
+        f"/settings?farm_id={farm_id}",
+        json={"notification_preferences": {"channels": {"email": True}}},
+    )
 
     first = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
@@ -336,6 +343,80 @@ def test_new_alert_emails_the_orgs_owners_and_managers(authed_client, monkeypatc
     )
     assert second.status_code == 201
     assert len(calls) == 1
+
+
+def test_new_alert_does_not_email_when_the_farm_has_email_notifications_off(authed_client, monkeypatch):
+    """The opposite of test_new_alert_emails_the_orgs_owners_and_managers -
+    without turning Settings -> Notifications -> Channels -> Email on
+    first (it defaults off), a brand-new critical alert must NOT email
+    anyone, proving the toggle actually gates delivery rather than being
+    cosmetic."""
+    calls = []
+
+    async def _fake_send_alert_email(**kwargs):
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(flock_checks_module, "send_alert_email", _fake_send_alert_email)
+
+    authed_client.get("/team")
+    farm_id, house_id = _setup_farm_house(authed_client)
+    # Deliberately NOT enabling the email channel here.
+
+    response = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={
+            "period": "emergency",
+            "bird_count": 1000,
+            "mortality": 30,
+            "sick_or_injured": 5,
+            "feed_kg": 5,
+            "water_level": "lower",
+            "activity": "lethargic",
+            "feeding_behaviour": "none",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["risk_status"] == "critical"
+    assert calls == []
+
+
+def test_new_alert_pushes_to_the_orgs_owners_and_managers(authed_client, monkeypatch):
+    """Mirrors test_new_alert_emails_the_orgs_owners_and_managers for the
+    Push channel - independently gated, independently tested."""
+    calls = []
+
+    def _fake_send_push_to_uids(*args, **kwargs):
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(flock_checks_module, "send_push_to_uids", _fake_send_push_to_uids)
+
+    authed_client.get("/team")  # backfills the owner's own membership doc
+    farm_id, house_id = _setup_farm_house(authed_client)
+    authed_client.patch(
+        f"/settings?farm_id={farm_id}",
+        json={"notification_preferences": {"channels": {"push": True}}},
+    )
+
+    response = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={
+            "period": "emergency",
+            "bird_count": 1000,
+            "mortality": 30,
+            "sick_or_injured": 5,
+            "feed_kg": 5,
+            "water_level": "lower",
+            "activity": "lethargic",
+            "feeding_behaviour": "none",
+        },
+    )
+    assert response.status_code == 201
+    assert len(calls) == 1
+    assert calls[0]["uids"] == [FAKE_UID]  # authed_client's fake user, backfilled as owner
+    assert "House A" in calls[0]["title"]
+    assert calls[0]["url"].endswith("/alerts")
 
 
 def test_normal_check_never_emails_an_alert(authed_client, monkeypatch):
