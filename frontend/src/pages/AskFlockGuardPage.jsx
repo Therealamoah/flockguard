@@ -163,15 +163,15 @@ export default function AskFlockGuardPage() {
       </div>
 
       {!isEmpty ? (
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+        <div className="mt-4 flex flex-wrap gap-2">
           {QUICK_CHIPS.map(({ Icon, text }) => (
             <button
               key={text}
               onClick={() => send(text)}
               disabled={isSending}
-              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-hairline bg-surface px-3 py-1.5 text-xs font-medium text-secondary shadow-sm hover:border-ai/30 hover:bg-ai/10 hover:text-ai disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 py-1.5 text-xs font-medium text-secondary shadow-sm hover:border-ai/30 hover:bg-ai/10 hover:text-ai disabled:opacity-50"
             >
-              <Icon size={12} />
+              <Icon size={12} className="shrink-0" />
               {text}
             </button>
           ))}

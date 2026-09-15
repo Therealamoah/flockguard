@@ -10,7 +10,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png', 'logo-mark.png'],
       manifest: {
         name: 'FlockGuard AI',
         short_name: 'FlockGuard',
