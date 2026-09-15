@@ -39,6 +39,9 @@ const del = (path) => apiFetch(path, { method: 'DELETE' })
 const get = (path) => apiFetch(path)
 
 export const api = {
+  auth: {
+    forgotPassword: (email) => post('/auth/forgot-password', { email }),
+  },
   farms: {
     list: () => get('/farms'),
     create: (data) => post('/farms', data),

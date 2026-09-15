@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     rate_limit_ask: str = "15/minute"
     rate_limit_media_upload: str = "30/minute"
     rate_limit_flock_check: str = "30/minute"
+    # Deliberately tight - this endpoint is unauthenticated by nature (you
+    # don't have a session yet when you've forgotten your password), so it's
+    # also the easiest one for an attacker to hammer for email enumeration
+    # or to spam a stranger's inbox with reset emails.
+    rate_limit_password_reset: str = "5/minute"
 
     # Upload limits enforced server-side in app/services/media_validation.py
     # - never trust the frontend or the file extension alone.

@@ -20,6 +20,7 @@ from app.api.routes import (
     alerts,
     analytics,
     ask,
+    auth,
     billing,
     farms,
     flock_checks,
@@ -124,6 +125,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(farms.router)
 app.include_router(houses.router)
 app.include_router(flocks.router)

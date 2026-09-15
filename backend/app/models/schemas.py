@@ -164,6 +164,18 @@ class InviteMemberRequest(BaseModel):
         return value
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not _EMAIL_RE.match(value):
+            raise ValueError("Enter a valid email address")
+        return value
+
+
 class UpdateMemberRoleRequest(BaseModel):
     """Role can be set to OWNER here (an existing owner adding a co-owner) -
     self-promotion isn't a concern since only an owner can call this route

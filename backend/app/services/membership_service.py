@@ -71,6 +71,18 @@ def count_active_owners(db: Client, org_id: str) -> int:
     return sum(1 for _ in docs)
 
 
+def get_notification_emails(db: Client, org_id: str) -> list[str]:
+    """Emails for the people who should hear about something needing
+    attention (e.g. a new alert) - active owners and managers, not workers
+    or anyone who's left/been removed."""
+    emails = []
+    for doc in members_ref(db, org_id).where("status", "==", "active").stream():
+        data = doc.to_dict()
+        if data.get("role") in (Role.OWNER.value, Role.MANAGER.value) and data.get("email"):
+            emails.append(data["email"])
+    return emails
+
+
 def set_org_claim(uid: str, org_id: str) -> None:
     """Grants org access on the invited user's Firebase Auth token.
 

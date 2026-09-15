@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../store/useAuthStore'
 import { useAppStore } from '../store/useAppStore'
-import { logout, resetPassword } from '../lib/firebase'
+import { logout } from '../lib/firebase'
 import { api } from '../lib/api'
 
 const TABS = [
@@ -447,7 +447,7 @@ function AccountTab({ user }) {
 
   async function handleResetPassword() {
     if (!user?.email) return
-    await resetPassword(user.email)
+    await api.auth.forgotPassword(user.email)
     setResetSent(true)
   }
 

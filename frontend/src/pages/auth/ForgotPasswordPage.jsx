@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Mail, MailCheck } from 'lucide-react'
 import AuthShell, { IconField } from '../../components/AuthShell'
-import { resetPassword } from '../../lib/firebase'
+import { api } from '../../lib/api'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -15,7 +15,7 @@ export default function ForgotPasswordPage() {
     setError('')
     setIsSubmitting(true)
     try {
-      await resetPassword(email)
+      await api.auth.forgotPassword(email)
       setSent(true)
     } catch {
       setError('Could not send reset email. Check the address and try again.')

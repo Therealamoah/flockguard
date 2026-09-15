@@ -15,6 +15,8 @@ from app.risk_engine.engine import compute_risk
 from app.risk_engine.models import FlockCheckInput, HouseBaseline
 from app.services.alert_engine import sync_alert_for_check
 from app.services.comparison_service import build_morning_evening_comparison
+from app.services.email_service import send_alert_email
+from app.services.membership_service import get_notification_emails
 
 # Maps a check's period to the agent trigger name it fires -
 # app/agent/agent_router.py decides which skill (if any) responds to each.
@@ -74,6 +76,27 @@ def _get_farm(db: Client, org_id: str, farm_id: str) -> dict:
 
 def _proactive_investigation_enabled(farm: dict) -> bool:
     return farm.get("ai_preferences", {}).get("proactive_insights_enabled", True)
+
+
+async def _notify_new_alert(db: Client, *, org_id: str, farm_id: str, house_id: str, farm_name: str, alert: dict) -> None:
+    """Runs as a background task (see the add_task call below) so a slow or
+    failing email send never delays the check-submission response - fires
+    only when sync_alert_for_check just OPENED a new alert, not on every
+    later check that keeps an already-open one alive, so one ongoing issue
+    doesn't turn into a flood of near-duplicate emails."""
+    to_emails = get_notification_emails(db, org_id)
+    if not to_emails:
+        return
+    house_doc = houses_ref(db, org_id, farm_id).document(house_id).get()
+    house_name = house_doc.to_dict().get("name", "A house") if house_doc.exists else "A house"
+    await send_alert_email(
+        to_emails=to_emails,
+        farm_name=farm_name or "your farm",
+        house_name=house_name,
+        status=alert["status"],
+        score=alert["score"],
+        factors=[f["label"] for f in alert.get("factors", [])],
+    )
 
 
 @router.post("", response_model=FlockCheckResponse, status_code=201)
@@ -164,6 +187,17 @@ def submit_flock_check(
         risk=risk,
         previous_risk_score=previous_risk_score,
     )
+
+    if alert_result and alert_result["action"] == "created":
+        background_tasks.add_task(
+            _notify_new_alert,
+            db,
+            org_id=org_id,
+            farm_id=farm_id,
+            house_id=house_id,
+            farm_name=farm.get("name"),
+            alert=alert_result["alert"],
+        )
 
     # AI investigation is event-gated (deterministic, no AI call involved in
     # the decision itself - app/agent/agent_router.py) and runs strictly

@@ -5,7 +5,6 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  sendPasswordResetEmail,
 } from 'firebase/auth'
 import { useAuthStore } from '../store/useAuthStore'
 
@@ -51,8 +50,4 @@ export function loginWithEmail(email, password) {
 
 export function logout() {
   return signOut(auth)
-}
-
-export function resetPassword(email) {
-  return sendPasswordResetEmail(auth, email)
 }

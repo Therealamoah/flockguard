@@ -281,3 +281,77 @@ def test_normal_check_does_not_trigger_agent_investigation(authed_client, fake_d
     assert response.json()["risk_status"] == "normal"
 
     assert list(agent_runs_ref(fake_db, FAKE_UID).stream()) == []
+
+
+def test_new_alert_emails_the_orgs_owners_and_managers(authed_client, monkeypatch):
+    """Only fires on the alert's CREATION (see alert_engine.sync_alert_for_check's
+    "created" vs "updated" action) - proven by asserting exactly one call
+    even though two alert-worthy checks are submitted for the same house."""
+    calls = []
+
+    async def _fake_send_alert_email(**kwargs):
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(flock_checks_module, "send_alert_email", _fake_send_alert_email)
+
+    authed_client.get("/team")  # backfills the owner's own membership doc (get_current_org_id alone never does)
+    farm_id, house_id = _setup_farm_house(authed_client)
+
+    first = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={
+            "period": "emergency",
+            "bird_count": 1000,
+            "mortality": 30,
+            "sick_or_injured": 5,
+            "feed_kg": 5,
+            "water_level": "lower",
+            "activity": "lethargic",
+            "feeding_behaviour": "none",
+        },
+    )
+    assert first.status_code == 201
+    assert first.json()["risk_status"] == "critical"
+    assert len(calls) == 1
+    assert calls[0]["house_name"] == "House A"
+    assert calls[0]["farm_name"] == "Test Farm"
+    assert calls[0]["status"] == "critical"
+    assert calls[0]["to_emails"] == ["farmer@example.com"]  # authed_client's fake user, backfilled as owner
+
+    # A second alert-worthy check for the SAME house updates the existing
+    # open alert rather than opening a new one - must not email again.
+    second = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={
+            "period": "emergency",
+            "bird_count": 970,
+            "mortality": 20,
+            "sick_or_injured": 5,
+            "feed_kg": 5,
+            "water_level": "lower",
+            "activity": "lethargic",
+            "feeding_behaviour": "none",
+        },
+    )
+    assert second.status_code == 201
+    assert len(calls) == 1
+
+
+def test_normal_check_never_emails_an_alert(authed_client, monkeypatch):
+    calls = []
+
+    async def _fake_send_alert_email(**kwargs):
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(flock_checks_module, "send_alert_email", _fake_send_alert_email)
+
+    farm_id, house_id = _setup_farm_house(authed_client)
+    response = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={"period": "morning", "bird_count": 1000, "mortality": 1},
+    )
+    assert response.status_code == 201
+    assert response.json()["risk_status"] == "normal"
+    assert calls == []
