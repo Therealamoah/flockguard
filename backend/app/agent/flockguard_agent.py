@@ -204,8 +204,14 @@ async def _run_loop(registry: dict[str, Tool], messages: list[dict], state: Agen
             )
 
     # Ran out of iterations - force a final answer with no more tools offered.
+    # Still allow one corrective retry here (not zero): live testing showed
+    # this exhausted-iterations path failing outright as often as the normal
+    # path when the forced answer came back malformed, for the same
+    # transient-model-output reason - there's no reason to treat it less
+    # forgivingly just because it arrived via the iteration cap.
+    _logger.info("Agent run %s: ran out of tool iterations (%d), forcing a final answer", state.run_id, MAX_TOOL_ITERATIONS)
     content = await _force_final_answer(messages, state)
-    return await _finalize(content, messages, state, allow_retry=False)
+    return await _finalize(content, messages, state, max_retries=1)
 
 
 async def _force_final_answer(messages: list[dict], state: AgentState) -> str | None:
@@ -238,13 +244,24 @@ async def _force_final_answer(messages: list[dict], state: AgentState) -> str | 
 
 
 async def _finalize(
-    content: str | None, messages: list[dict], state: AgentState, *, allow_retry: bool = True
+    content: str | None, messages: list[dict], state: AgentState, *, max_retries: int = 2
 ) -> AgentAssessment | None:
+    """Validates the model's final content as an AgentAssessment, retrying up
+    to `max_retries` times on malformed output before giving up. Widened from
+    a single retry after live testing showed Groq's output_parse_failed /
+    schema-invalid-JSON failures often succeed on a second or third corrective
+    attempt within the same request - one retry alone left a meaningful share
+    of otherwise-ordinary questions failing outright with a 502."""
     assessment = _try_parse_assessment(content)
     ok, reason = (False, "unparseable") if assessment is None else validate_assessment(assessment)
 
-    if not ok and allow_retry:
-        _logger.info("Agent run %s: retrying malformed assessment (%s)", state.run_id, reason)
+    attempt = 0
+    while not ok and attempt < max_retries:
+        attempt += 1
+        _logger.info(
+            "Agent run %s: retrying malformed assessment (%s), attempt %d/%d",
+            state.run_id, reason, attempt, max_retries,
+        )
         messages.append({"role": "assistant", "content": content})
         messages.append(
             {
@@ -256,13 +273,16 @@ async def _finalize(
                 ),
             }
         )
-        retry_content = await _force_final_answer(messages, state)
-        assessment = _try_parse_assessment(retry_content)
+        content = await _force_final_answer(messages, state)
+        assessment = _try_parse_assessment(content)
         ok, reason = (False, "unparseable") if assessment is None else validate_assessment(assessment)
 
     if not ok or assessment is None:
         if assessment is not None:
-            _logger.warning("Agent run %s: assessment failed validation after retry (%s)", state.run_id, reason)
+            _logger.warning(
+                "Agent run %s: assessment failed validation after %d retries (%s)",
+                state.run_id, attempt, reason,
+            )
         return None
 
     state.rag_sources_used = assessment.knowledge_sources

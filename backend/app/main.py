@@ -12,6 +12,12 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.limiter import limiter
 
+# Without this, the root logger stays at its default WARNING level, so every
+# _logger.info(...) call across the app (agent retries, Grok request prep,
+# tool-call rejections) is silently dropped - the only trace of a failure in
+# production would be a bare "HTTP error: status=502" line, with no way to
+# tell why. This makes those causes visible in Render's log output.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 _logger = logging.getLogger(__name__)
 
