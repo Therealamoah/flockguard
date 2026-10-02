@@ -23,11 +23,11 @@ import { enablePushNotifications, disablePushNotifications } from '../lib/push'
 
 const TABS = [
   { key: 'profile', label: 'Farm Profile', Icon: MapPin },
-  { key: 'schedule', label: 'Check Schedule', Icon: Clock3 },
+  { key: 'schedule', label: 'Check times', Icon: Clock3 },
   { key: 'notifications', label: 'Notifications', Icon: Bell },
-  { key: 'intelligence', label: 'FlockGuard Intelligence', Icon: Sparkles },
+  { key: 'intelligence', label: 'AI help', Icon: Sparkles },
   { key: 'account', label: 'Account', Icon: User },
-  { key: 'danger', label: 'Danger Zone', Icon: AlertTriangle },
+  { key: 'danger', label: 'Delete farm', Icon: AlertTriangle },
 ]
 
 // The full IANA tz database, via the browser itself - the backend already
@@ -132,7 +132,7 @@ function FarmProfileTab({ settings, canEdit, onSave }) {
           onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))}
           className="w-full rounded-lg border border-hairline px-3 py-2 text-sm outline-none focus:border-forest disabled:bg-hairline/30"
         >
-          <option value="">Not set (defaults to UTC)</option>
+          <option value="">Not set</option>
           {TIMEZONES.map((tz) => (
             <option key={tz} value={tz}>
               {tz}
@@ -140,7 +140,7 @@ function FarmProfileTab({ settings, canEdit, onSave }) {
           ))}
         </select>
         <p className="mt-1 text-xs text-muted">
-          Used to correctly pair Morning and Evening Checks on the same farm day, and for "today" in reminders/briefs.
+          So morning and evening checks match the right day, and reminders come at the right time.
         </p>
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -250,7 +250,7 @@ function CheckScheduleTab({ settings, canEdit, onSave }) {
     <form onSubmit={handleSubmit} className="max-w-lg space-y-4">
       {!canEdit ? <ReadOnlyNotice /> : null}
       <CheckWindowRow
-        label="Morning Check"
+        label="Morning check"
         enabled={form.morning_check_enabled}
         start={form.morning_check_start}
         end={form.morning_check_end}
@@ -265,7 +265,7 @@ function CheckScheduleTab({ settings, canEdit, onSave }) {
         }
       />
       <CheckWindowRow
-        label="Evening Check"
+        label="Evening check"
         enabled={form.evening_check_enabled}
         start={form.evening_check_start}
         end={form.evening_check_end}
@@ -280,8 +280,7 @@ function CheckScheduleTab({ settings, canEdit, onSave }) {
         }
       />
       <p className="text-xs text-muted">
-        Emergency Checks are always available and are never blocked by these windows - these are reminder/scheduling
-        preferences only, not a submission restriction.
+        You can always do an emergency check at any time. These times are only for reminders.
       </p>
       {canEdit ? (
         <div className="flex items-center gap-3">
@@ -329,12 +328,12 @@ function NotificationsTab({ settings, canEdit, onSave }) {
   }
 
   const toggles = [
-    ['critical_alerts', 'Critical alerts'],
-    ['warning_alerts', 'Warning alerts'],
-    ['watch_alerts', 'Watch alerts'],
-    ['morning_check_reminder', 'Morning Check reminder'],
-    ['evening_check_reminder', 'Evening Check reminder'],
-    ['daily_farm_brief', 'Daily Farm Brief'],
+    ['critical_alerts', 'Critical - very serious'],
+    ['warning_alerts', 'Warning - serious'],
+    ['watch_alerts', 'Watch - keep an eye on it'],
+    ['morning_check_reminder', 'Remind me to do the morning check'],
+    ['evening_check_reminder', 'Remind me to do the evening check'],
+    ['daily_farm_brief', "Today's farm update"],
   ]
 
   return (
@@ -357,7 +356,7 @@ function NotificationsTab({ settings, canEdit, onSave }) {
       <div>
         <h3 className="text-sm font-bold text-navy">Channels</h3>
         <p className="mt-1 text-xs text-secondary">
-          Email and Push send when a new alert opens, based on the severity toggles above.
+          We send an email or phone notification when a new warning comes up, for the types you switched on above.
         </p>
         <div className="mt-2 space-y-2 rounded-xl border border-hairline p-4">
           <div className="flex items-center justify-between text-sm">
@@ -380,7 +379,7 @@ function NotificationsTab({ settings, canEdit, onSave }) {
               />
             </label>
             {pushStatus === 'requesting' ? (
-              <p className="mt-1 text-xs text-secondary">Requesting notification permission...</p>
+              <p className="mt-1 text-xs text-secondary">Asking your phone for permission...</p>
             ) : null}
             {pushStatus === 'error' ? <p className="mt-1 text-xs text-critical">{pushError}</p> : null}
           </div>
@@ -429,9 +428,9 @@ function IntelligenceTab({ settings, canEdit, onSave }) {
   }
 
   const toggles = [
-    ['ai_explanations_enabled', 'AI Explanations', '"Why?" explanations on flagged checks and alerts.'],
-    ['daily_ai_brief_enabled', 'Daily AI Brief', "A reworded, friendlier version of your farm's daily summary."],
-    ['proactive_insights_enabled', 'Proactive Insights', 'Trend detection surfaced without asking (e.g. feed decline).'],
+    ['ai_explanations_enabled', 'Explain warnings', 'The AI tells you in simple words why a check or house needs a look.'],
+    ['daily_ai_brief_enabled', 'Friendly daily update', "The AI writes your farm's daily update like a short chat."],
+    ['proactive_insights_enabled', 'Spot problems early', 'FlockGuard tells you when something keeps getting worse, e.g. birds eating less feed every day.'],
   ]
 
   return (
@@ -455,7 +454,7 @@ function IntelligenceTab({ settings, canEdit, onSave }) {
       </div>
 
       <div className="rounded-xl border border-hairline bg-bg p-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-secondary">Risk Method</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-secondary">How the risk number works</p>
         <p className="mt-1 text-sm font-bold text-navy">{settings.risk_method.name}</p>
         <p className="mt-1 text-sm text-secondary">{settings.risk_method.description}</p>
         <p className="mt-2 text-xs text-muted">{settings.risk_method.disclaimer}</p>
@@ -585,7 +584,7 @@ function DangerZoneTab({ farmId, farmName, isOwner, settings, setSettings }) {
     } catch (err) {
       setMessage(
         err.message.includes('501')
-          ? "Permanent deletion isn't available yet in this pilot (no safe cascade-delete across houses/flocks/checks/alerts/inspections/media). Your farm has NOT been deleted - use Archive instead, it's reversible."
+          ? "Deleting a farm for good is not available yet. Your farm has NOT been deleted. Use Archive instead - you can undo it later."
           : 'Confirmation text did not match the farm name or "DELETE".'
       )
     } finally {

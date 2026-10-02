@@ -58,7 +58,7 @@ def detect_trends(house_id: str, house_name: str, recent_checks: list[dict]) -> 
                 "mortality_increase",
                 "warning",
                 "mortality_increased_three_checks",
-                f"{house_name}: mortality has risen for {CONSECUTIVE_WINDOW} checks in a row.",
+                f"{house_name}: more birds have died at each of the last {CONSECUTIVE_WINDOW} checks.",
                 _evidence(window, "mortality"),
             )
         )
@@ -70,7 +70,7 @@ def detect_trends(house_id: str, house_name: str, recent_checks: list[dict]) -> 
                 "feed_decline",
                 "watch",
                 "feed_declined_three_checks",
-                f"{house_name}: feed consumption has dropped for {CONSECUTIVE_WINDOW} checks in a row.",
+                f"{house_name}: birds have eaten less feed at each of the last {CONSECUTIVE_WINDOW} checks.",
                 _evidence(window, "feed_kg"),
             )
         )
@@ -82,7 +82,7 @@ def detect_trends(house_id: str, house_name: str, recent_checks: list[dict]) -> 
                 "risk_increase",
                 "warning",
                 "risk_increased_three_checks",
-                f"{house_name}: risk score has increased for {CONSECUTIVE_WINDOW} checks in a row.",
+                f"{house_name}: the risk has gone up at each of the last {CONSECUTIVE_WINDOW} checks.",
                 _evidence(window, "risk_score"),
             )
         )
@@ -93,7 +93,7 @@ def detect_trends(house_id: str, house_name: str, recent_checks: list[dict]) -> 
                 "water_low_repeated",
                 "watch",
                 "water_low_three_checks",
-                f"{house_name}: water has been reported lower than usual for {CONSECUTIVE_WINDOW} checks in a row.",
+                f"{house_name}: birds have drunk less water than usual at each of the last {CONSECUTIVE_WINDOW} checks.",
                 _evidence(window, "water_level"),
             )
         )
@@ -104,7 +104,7 @@ def detect_trends(house_id: str, house_name: str, recent_checks: list[dict]) -> 
                 "activity_reduced_repeated",
                 "watch",
                 "activity_reduced_three_checks",
-                f"{house_name}: reduced bird activity has been reported for {CONSECUTIVE_WINDOW} checks in a row.",
+                f"{house_name}: birds have been less active at each of the last {CONSECUTIVE_WINDOW} checks.",
                 _evidence(window, "activity"),
             )
         )

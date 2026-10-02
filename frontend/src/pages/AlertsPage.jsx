@@ -8,6 +8,7 @@ import FactorBars from '../components/FactorBars'
 import { timeAgo } from '../lib/time'
 
 const FILTERS = ['open', 'resolved', 'all']
+const FILTER_LABELS = { open: 'Open', resolved: 'Sorted out', all: 'All' }
 
 export default function AlertsPage() {
   const { houses } = useAppStore()
@@ -50,8 +51,8 @@ export default function AlertsPage() {
             <ShieldAlert size={20} />
           </span>
           <div>
-            <h1 className="font-display text-2xl font-extrabold text-navy">Alerts</h1>
-            <p className="text-sm text-secondary">Issues the Risk Engine flagged for your attention.</p>
+            <h1 className="font-display text-2xl font-extrabold text-navy">Warnings</h1>
+            <p className="text-sm text-secondary">Houses where FlockGuard saw a problem.</p>
           </div>
         </div>
         <div className="flex gap-1 rounded-lg border border-hairline bg-surface p-1">
@@ -64,7 +65,7 @@ export default function AlertsPage() {
                 filter === f ? 'bg-forest text-white' : 'text-secondary hover:bg-forest/5',
               ].join(' ')}
             >
-              {f}
+              {FILTER_LABELS[f]}
             </button>
           ))}
         </div>
@@ -74,12 +75,12 @@ export default function AlertsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center gap-2 rounded-xl border border-hairline bg-surface py-16 text-sm text-secondary shadow-sm">
             <Loader2 size={16} className="animate-spin" />
-            Loading alerts...
+            Getting warnings...
           </div>
         ) : alerts.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-hairline bg-surface py-16 text-center shadow-sm">
             <ShieldCheck size={28} className="text-muted" />
-            <p className="text-sm text-secondary">No {filter !== 'all' ? filter : ''} alerts.</p>
+            <p className="text-sm text-secondary">{filter === 'resolved' ? 'Nothing sorted out yet.' : 'No warnings - all looks fine.'}</p>
           </div>
         ) : (
           alerts.map((alert) => {
@@ -103,7 +104,7 @@ export default function AlertsPage() {
                         ) : null}
                         {alert.occurrence_count > 1 ? (
                           <span className="rounded-full bg-hairline/70 px-2 py-0.5 text-xs font-semibold text-secondary">
-                            Seen {alert.occurrence_count}×
+                            Happened {alert.occurrence_count} times
                           </span>
                         ) : null}
                       </div>
@@ -114,7 +115,7 @@ export default function AlertsPage() {
                     {alert.resolved ? (
                       <span className="mt-2 flex items-center gap-1 text-xs font-semibold text-normal">
                         <Check size={12} />
-                        Resolved
+                        Sorted out
                       </span>
                     ) : alert.acknowledged ? (
                       <span className="mt-2 flex items-center gap-1 text-xs font-semibold text-secondary">
@@ -126,7 +127,7 @@ export default function AlertsPage() {
                 </div>
 
                 <div className="mt-4 border-t border-hairline pt-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-muted">Why this house is flagged</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted">Why this house needs a look</p>
                   <div className="mt-3">
                     <FactorBars factors={alert.factors} />
                   </div>
@@ -138,7 +139,7 @@ export default function AlertsPage() {
                     className="flex items-center gap-1.5 rounded-lg border border-hairline px-3 py-1.5 text-xs font-semibold text-navy hover:bg-forest/5"
                   >
                     <Building2 size={13} />
-                    View House
+                    See house
                   </button>
                   <button
                     onClick={() => navigate('/ask')}
@@ -153,7 +154,7 @@ export default function AlertsPage() {
                       className="flex items-center gap-1.5 rounded-lg border border-hairline px-3 py-1.5 text-xs font-semibold text-navy hover:bg-forest/5"
                     >
                       <Check size={13} />
-                      Acknowledge
+                      I've seen it
                     </button>
                   ) : null}
                   {!alert.resolved ? (
@@ -162,7 +163,7 @@ export default function AlertsPage() {
                       className="flex items-center gap-1.5 rounded-lg bg-forest px-3 py-1.5 text-xs font-semibold text-white hover:bg-forest-dark"
                     >
                       <Stethoscope size={13} />
-                      Resolve
+                      Sorted out
                     </button>
                   ) : null}
                 </div>

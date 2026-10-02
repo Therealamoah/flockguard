@@ -34,6 +34,18 @@ def _no_real_ai_calls_by_default(monkeypatch):
     monkeypatch.setattr("app.services.grok_service.grok_service.chat", _fail_fast)
     monkeypatch.setattr("app.services.grok_service.grok_service.chat_completion", _fail_fast)
 
+    async def _fail_fast_stream(*args, **kwargs):
+        raise RuntimeError("Real Grok/OpenRouter calls are not allowed in tests - mock grok_service explicitly.")
+        yield  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr("app.services.grok_service.grok_service.stream_chat", _fail_fast_stream)
+
+    async def _no_photo_analysis(*args, **kwargs):
+        return None  # analyze_photo is best-effort by contract - never raises
+
+    monkeypatch.setattr("app.services.grok_service.grok_service.analyze_photo", _no_photo_analysis)
+    monkeypatch.setattr("app.services.grok_service.grok_service.extract_check_fields", _no_photo_analysis)
+
 
 @pytest.fixture(autouse=True)
 def _no_real_emails_by_default(monkeypatch):

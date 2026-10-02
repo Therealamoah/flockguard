@@ -43,8 +43,8 @@ export default function FlockChecksListPage() {
             <ClipboardList size={20} />
           </span>
           <div>
-            <h1 className="font-display text-2xl font-extrabold text-navy">Flock Checks</h1>
-            <p className="text-sm text-secondary">Every recorded check across your farm.</p>
+            <h1 className="font-display text-2xl font-extrabold text-navy">Checks</h1>
+            <p className="text-sm text-secondary">Every check done on your farm.</p>
           </div>
         </div>
         <Link
@@ -60,12 +60,12 @@ export default function FlockChecksListPage() {
         {isLoading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-secondary">
             <Loader2 size={16} className="animate-spin" />
-            Loading checks...
+            Getting checks...
           </div>
         ) : checks.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-16 text-center">
             <Inbox size={28} className="text-muted" />
-            <p className="text-sm text-secondary">No Flock Checks recorded yet.</p>
+            <p className="text-sm text-secondary">No checks done yet.</p>
           </div>
         ) : (
           <div className="divide-y divide-hairline">
@@ -89,7 +89,7 @@ export default function FlockChecksListPage() {
                       {c.period} · {timeAgo(c.recorded_at)}
                     </p>
                   </div>
-                  <span className="hidden text-secondary sm:block">Mortality {c.mortality}</span>
+                  <span className="hidden text-secondary sm:block">Dead birds: {c.mortality}</span>
                   <StatusBadge status={c.risk_status} score={c.risk_score} size="sm" />
                   <ChevronRight size={16} className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
                 </div>

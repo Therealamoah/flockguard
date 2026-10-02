@@ -46,13 +46,13 @@ def _mortality_points(check: FlockCheckInput, baseline: HouseBaseline) -> RiskFa
             return None
         # Scales from 1x baseline (0 pts) to 4x+ baseline (full weight).
         severity = min((ratio - 1) / 3, 1.0)
-        label = "Mortality above recent baseline"
+        label = "More birds dying than usual"
     else:
         if mortality_rate <= REFERENCE_MORTALITY_RATE:
             return None
         # Scales from the reference rate (0 pts) to 5x it (full weight).
         severity = min((mortality_rate - REFERENCE_MORTALITY_RATE) / (REFERENCE_MORTALITY_RATE * 4), 1.0)
-        label = "Mortality above normal range"
+        label = "Too many birds dying"
 
     points = round(severity * MORTALITY_WEIGHT, 1)
     return RiskFactor(key="mortality", label=label, points=points)
@@ -68,41 +68,41 @@ def _feed_points(check: FlockCheckInput, baseline: HouseBaseline) -> RiskFactor 
 
     severity = min(drop / 0.5, 1.0)  # 50%+ drop = full weight
     points = round(severity * FEED_WEIGHT, 1)
-    return RiskFactor(key="feed", label="Feed consumption dropped", points=points)
+    return RiskFactor(key="feed", label="Eating less feed", points=points)
 
 
 def _water_points(check: FlockCheckInput) -> RiskFactor | None:
     if check.water_level == WaterLevel.LOWER:
-        return RiskFactor(key="water", label="Water consumption lower than usual", points=WATER_WEIGHT)
+        return RiskFactor(key="water", label="Drinking less water than usual", points=WATER_WEIGHT)
     return None
 
 
 def _activity_points(check: FlockCheckInput) -> RiskFactor | None:
     if check.activity == ActivityLevel.LETHARGIC:
-        return RiskFactor(key="activity", label="Birds lethargic", points=ACTIVITY_WEIGHT)
+        return RiskFactor(key="activity", label="Birds weak and dull", points=ACTIVITY_WEIGHT)
     if check.activity == ActivityLevel.REDUCED:
-        return RiskFactor(key="activity", label="Reduced bird activity", points=ACTIVITY_WEIGHT * 0.6)
+        return RiskFactor(key="activity", label="Birds less active", points=ACTIVITY_WEIGHT * 0.6)
     return None
 
 
 def _observation_points(check: FlockCheckInput) -> list[RiskFactor]:
     factors = []
     if check.feeding_behaviour == FeedingBehaviour.NONE:
-        factors.append(RiskFactor(key="feeding_behaviour", label="Birds not feeding", points=OBSERVATION_WEIGHT))
+        factors.append(RiskFactor(key="feeding_behaviour", label="Birds not eating", points=OBSERVATION_WEIGHT))
     elif check.feeding_behaviour == FeedingBehaviour.REDUCED:
         factors.append(
-            RiskFactor(key="feeding_behaviour", label="Reduced feeding behaviour", points=OBSERVATION_WEIGHT * 0.5)
+            RiskFactor(key="feeding_behaviour", label="Birds eating less", points=OBSERVATION_WEIGHT * 0.5)
         )
 
     if check.crowding_observed:
-        factors.append(RiskFactor(key="crowding", label="Crowding observed", points=OBSERVATION_WEIGHT * 0.5))
+        factors.append(RiskFactor(key="crowding", label="Birds huddling together", points=OBSERVATION_WEIGHT * 0.5))
 
     if check.unusual_sound_observed:
-        factors.append(RiskFactor(key="sound", label="Unusual sounds reported", points=OBSERVATION_WEIGHT * 0.5))
+        factors.append(RiskFactor(key="sound", label="Coughing or strange sounds", points=OBSERVATION_WEIGHT * 0.5))
 
     if check.sick_or_injured > 0:
         factors.append(
-            RiskFactor(key="sick_or_injured", label="Sick or injured birds observed", points=OBSERVATION_WEIGHT * 0.5)
+            RiskFactor(key="sick_or_injured", label="Sick or hurt birds seen", points=OBSERVATION_WEIGHT * 0.5)
         )
 
     return factors

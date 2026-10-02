@@ -22,28 +22,40 @@ def _setup_farm_house(client):
     return farm["id"], house["id"]
 
 
+def _place_flock(client, farm_id, house_id, initial_bird_count=1000):
+    """A Flock Check now requires an active flock - bird_count is derived
+    from its current_bird_count, not farmer-entered. Returns the flock id."""
+    flock = client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flocks",
+        json={"bird_type": "broiler", "breed": "Cobb 500", "start_date": "2026-01-01", "initial_bird_count": initial_bird_count},
+    ).json()
+    return flock["id"]
+
+
 def test_morning_then_evening_pairing_and_risk_delta(authed_client, monkeypatch):
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id, initial_bird_count=1000)
 
     _set_clock(monkeypatch, "2026-01-05T06:00:00+00:00")
     morning = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "morning", "bird_count": 1000, "mortality": 1, "feed_kg": 30},
+        json={"period": "morning", "mortality": 1, "feed_kg": 30},
     ).json()
     assert morning["risk_score"] == 0  # no baseline yet, low mortality
+    assert morning["bird_count"] == 999
 
     _set_clock(monkeypatch, "2026-01-05T18:00:00+00:00")
     evening = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
         json={
             "period": "evening",
-            "bird_count": 1000,
             "mortality": 4,
             "feed_kg": 22,
             "water_level": "lower",
             "activity": "reduced",
         },
     ).json()
+    assert evening["bird_count"] == 995  # 999 - 4, derived not re-entered
 
     assert evening["previous_risk_score"] == morning["risk_score"]
     assert evening["risk_change"] == evening["risk_score"] - morning["risk_score"]
@@ -58,10 +70,11 @@ def test_morning_then_evening_pairing_and_risk_delta(authed_client, monkeypatch)
 
 def test_evening_check_with_no_morning_check_has_no_comparison(authed_client, monkeypatch):
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
     _set_clock(monkeypatch, "2026-01-05T18:00:00+00:00")
     evening = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "evening", "bird_count": 1000, "mortality": 2},
+        json={"period": "evening", "mortality": 2},
     ).json()
     assert evening["morning_comparison"] is None
     assert evening["previous_risk_score"] is None
@@ -69,43 +82,47 @@ def test_evening_check_with_no_morning_check_has_no_comparison(authed_client, mo
 
 def test_emergency_check_between_morning_and_evening_still_pairs_with_morning(authed_client, monkeypatch):
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
 
     _set_clock(monkeypatch, "2026-01-05T06:00:00+00:00")
     morning = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "morning", "bird_count": 1000, "mortality": 1},
+        json={"period": "morning", "mortality": 1},
     ).json()
 
     _set_clock(monkeypatch, "2026-01-05T12:00:00+00:00")
     emergency = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "emergency", "bird_count": 1000, "mortality": 5},
+        json={"period": "emergency", "mortality": 5},
     ).json()
     assert emergency["morning_comparison"]["morning_check_id"] == morning["id"]
 
     _set_clock(monkeypatch, "2026-01-05T18:00:00+00:00")
     evening = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "evening", "bird_count": 1000, "mortality": 7},
+        json={"period": "evening", "mortality": 7},
     ).json()
     # Evening still pairs against the real Morning Check, not the emergency one.
     assert evening["morning_comparison"]["morning_check_id"] == morning["id"]
+    assert evening["bird_count"] == 1000 - 1 - 5 - 7
 
 
 def test_comparison_is_scoped_to_the_same_house(authed_client, monkeypatch):
     farm_id, house_a = _setup_farm_house(authed_client)
     house_b = authed_client.post(f"/farms/{farm_id}/houses", json={"name": "House B"}).json()["id"]
+    _place_flock(authed_client, farm_id, house_a)
+    _place_flock(authed_client, farm_id, house_b, initial_bird_count=500)
 
     _set_clock(monkeypatch, "2026-01-05T06:00:00+00:00")
     authed_client.post(
         f"/farms/{farm_id}/houses/{house_b}/flock-checks",
-        json={"period": "morning", "bird_count": 500, "mortality": 9},
+        json={"period": "morning", "mortality": 9},
     )
 
     _set_clock(monkeypatch, "2026-01-05T18:00:00+00:00")
     evening_house_a = authed_client.post(
         f"/farms/{farm_id}/houses/{house_a}/flock-checks",
-        json={"period": "evening", "bird_count": 1000, "mortality": 2},
+        json={"period": "evening", "mortality": 2},
     ).json()
 
     # House A's evening check must never pair against House B's morning check.
@@ -126,7 +143,7 @@ def test_comparison_is_scoped_to_the_same_flock(authed_client, monkeypatch):
     _set_clock(monkeypatch, "2026-01-05T06:00:00+00:00")
     authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "morning", "bird_count": 1000, "mortality": 1},
+        json={"period": "morning", "mortality": 1},
     )
 
     # Flock A's cycle ends and Flock B is placed the same day.
@@ -139,31 +156,34 @@ def test_comparison_is_scoped_to_the_same_flock(authed_client, monkeypatch):
     _set_clock(monkeypatch, "2026-01-05T18:00:00+00:00")
     evening = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "evening", "bird_count": 1200, "mortality": 0},
+        json={"period": "evening", "mortality": 0},
     ).json()
 
     assert evening["morning_comparison"] is None
+    assert evening["bird_count"] == 1200  # Flock B's own count, untouched by Flock A's history
 
 
 def test_different_calendar_date_morning_check_not_used(authed_client, monkeypatch):
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
 
     _set_clock(monkeypatch, "2026-01-04T06:00:00+00:00")
     authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "morning", "bird_count": 1000, "mortality": 1},
+        json={"period": "morning", "mortality": 1},
     )
 
     _set_clock(monkeypatch, "2026-01-05T18:00:00+00:00")
     evening = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "evening", "bird_count": 1000, "mortality": 2},
+        json={"period": "evening", "mortality": 2},
     ).json()
     assert evening["morning_comparison"] is None
 
 
 def test_alert_created_once_and_updated_not_duplicated_across_checks(authed_client, monkeypatch):
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
 
     for i, hour in enumerate(["06", "10", "14"]):
         _set_clock(monkeypatch, f"2026-01-0{i + 1}T{hour}:00:00+00:00")
@@ -171,7 +191,6 @@ def test_alert_created_once_and_updated_not_duplicated_across_checks(authed_clie
             f"/farms/{farm_id}/houses/{house_id}/flock-checks",
             json={
                 "period": "morning",
-                "bird_count": 1000,
                 "mortality": 0,
                 "activity": "lethargic",
                 "feeding_behaviour": "none",
@@ -187,9 +206,19 @@ def test_alert_created_once_and_updated_not_duplicated_across_checks(authed_clie
 
 def test_mortality_cannot_exceed_bird_count_returns_422(authed_client):
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id, initial_bird_count=10)
     response = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "morning", "bird_count": 10, "mortality": 50},
+        json={"period": "morning", "mortality": 50},
+    )
+    assert response.status_code == 422
+
+
+def test_flock_check_without_active_flock_returns_422(authed_client):
+    farm_id, house_id = _setup_farm_house(authed_client)
+    response = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={"period": "morning", "mortality": 0},
     )
     assert response.status_code == 422
 
@@ -198,9 +227,47 @@ def test_flock_check_for_nonexistent_house_returns_404(authed_client):
     farm_id, _ = _setup_farm_house(authed_client)
     response = authed_client.post(
         f"/farms/{farm_id}/houses/does-not-exist/flock-checks",
-        json={"period": "morning", "bird_count": 10, "mortality": 0},
+        json={"period": "morning", "mortality": 0},
     )
     assert response.status_code == 404
+
+
+def test_bird_count_auto_decrements_across_consecutive_checks(authed_client, monkeypatch):
+    farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id, initial_bird_count=200)
+
+    _set_clock(monkeypatch, "2026-01-05T06:00:00+00:00")
+    first = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={"period": "morning", "mortality": 5},
+    ).json()
+    assert first["bird_count"] == 195
+
+    _set_clock(monkeypatch, "2026-01-05T18:00:00+00:00")
+    second = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={"period": "evening", "mortality": 3},
+    ).json()
+    assert second["bird_count"] == 192
+
+
+def test_reconcile_count_is_used_as_the_baseline_for_the_next_check(authed_client, monkeypatch):
+    farm_id, house_id = _setup_farm_house(authed_client)
+    flock_id = _place_flock(authed_client, farm_id, house_id, initial_bird_count=200)
+
+    reconciled = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flocks/{flock_id}/reconcile-count",
+        json={"current_bird_count": 180, "reason": "Physical recount"},
+    )
+    assert reconciled.status_code == 200
+    assert reconciled.json()["current_bird_count"] == 180
+
+    _set_clock(monkeypatch, "2026-01-05T06:00:00+00:00")
+    check = authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={"period": "morning", "mortality": 5},
+    ).json()
+    assert check["bird_count"] == 175
 
 
 def test_critical_check_triggers_agent_investigation_end_to_end(authed_client, fake_db, monkeypatch):
@@ -214,6 +281,7 @@ def test_critical_check_triggers_agent_investigation_end_to_end(authed_client, f
     from app.services.grok_service import grok_service
 
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
 
     async def _fake_chat_completion(messages, tools=None, tool_choice=None, response_format=None, model=None):
         return {
@@ -242,7 +310,6 @@ def test_critical_check_triggers_agent_investigation_end_to_end(authed_client, f
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
         json={
             "period": "emergency",
-            "bird_count": 1000,
             "mortality": 30,
             "sick_or_injured": 5,
             "feed_kg": 5,
@@ -274,9 +341,10 @@ def test_normal_check_does_not_trigger_agent_investigation(authed_client, fake_d
     from tests.conftest import FAKE_UID
 
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
     response = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "morning", "bird_count": 1000, "mortality": 1},
+        json={"period": "morning", "mortality": 1},
     )
     assert response.status_code == 201
     assert response.json()["risk_status"] == "normal"
@@ -298,6 +366,7 @@ def test_new_alert_emails_the_orgs_owners_and_managers(authed_client, monkeypatc
 
     authed_client.get("/team")  # backfills the owner's own membership doc (get_current_org_id alone never does)
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
     # Email notifications default to off (opt-in) - turn them on for this
     # farm, same as a farmer would in Settings -> Notifications -> Channels.
     authed_client.patch(
@@ -309,7 +378,6 @@ def test_new_alert_emails_the_orgs_owners_and_managers(authed_client, monkeypatc
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
         json={
             "period": "emergency",
-            "bird_count": 1000,
             "mortality": 30,
             "sick_or_injured": 5,
             "feed_kg": 5,
@@ -332,7 +400,6 @@ def test_new_alert_emails_the_orgs_owners_and_managers(authed_client, monkeypatc
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
         json={
             "period": "emergency",
-            "bird_count": 970,
             "mortality": 20,
             "sick_or_injured": 5,
             "feed_kg": 5,
@@ -361,13 +428,13 @@ def test_new_alert_does_not_email_when_the_farm_has_email_notifications_off(auth
 
     authed_client.get("/team")
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
     # Deliberately NOT enabling the email channel here.
 
     response = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
         json={
             "period": "emergency",
-            "bird_count": 1000,
             "mortality": 30,
             "sick_or_injured": 5,
             "feed_kg": 5,
@@ -394,6 +461,7 @@ def test_new_alert_pushes_to_the_orgs_owners_and_managers(authed_client, monkeyp
 
     authed_client.get("/team")  # backfills the owner's own membership doc
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
     authed_client.patch(
         f"/settings?farm_id={farm_id}",
         json={"notification_preferences": {"channels": {"push": True}}},
@@ -403,7 +471,6 @@ def test_new_alert_pushes_to_the_orgs_owners_and_managers(authed_client, monkeyp
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
         json={
             "period": "emergency",
-            "bird_count": 1000,
             "mortality": 30,
             "sick_or_injured": 5,
             "feed_kg": 5,
@@ -429,10 +496,41 @@ def test_normal_check_never_emails_an_alert(authed_client, monkeypatch):
     monkeypatch.setattr(flock_checks_module, "send_alert_email", _fake_send_alert_email)
 
     farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
     response = authed_client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
-        json={"period": "morning", "bird_count": 1000, "mortality": 1},
+        json={"period": "morning", "mortality": 1},
     )
     assert response.status_code == 201
     assert response.json()["risk_status"] == "normal"
     assert calls == []
+
+
+def test_trends_include_risk_factor_keys_for_breakdown_charts(authed_client):
+    farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
+    authed_client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flock-checks",
+        json={"period": "emergency", "activity": "lethargic", "crowding_observed": True},
+    )
+
+    points = authed_client.get(f"/farms/{farm_id}/houses/{house_id}/analytics/trends").json()
+
+    assert len(points) == 1
+    assert set(points[0]["risk_factor_keys"]) == {"activity", "crowding"}
+
+
+def test_trends_date_range_returns_only_checks_inside_it(authed_client, monkeypatch):
+    farm_id, house_id = _setup_farm_house(authed_client)
+    _place_flock(authed_client, farm_id, house_id)
+    for day in ("2026-03-01", "2026-03-05", "2026-03-09"):
+        _set_clock(monkeypatch, f"{day}T07:00:00+00:00")
+        authed_client.post(f"/farms/{farm_id}/houses/{house_id}/flock-checks", json={"period": "morning"})
+
+    url = f"/farms/{farm_id}/houses/{house_id}/analytics/trends"
+    inside = authed_client.get(url, params={"start": "2026-03-04T00:00:00Z", "end": "2026-03-09T23:59:59Z"}).json()
+    from_only = authed_client.get(url, params={"start": "2026-03-05T00:00:00+00:00"}).json()
+
+    assert [p["recorded_at"][:10] for p in inside] == ["2026-03-05", "2026-03-09"]  # oldest first
+    assert len(from_only) == 2
+    assert authed_client.get(url, params={"start": "not-a-date"}).status_code == 422

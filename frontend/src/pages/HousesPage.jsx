@@ -49,7 +49,7 @@ export default function HousesPage() {
           </span>
           <div>
             <h1 className="font-display text-2xl font-extrabold text-navy">Houses</h1>
-            <p className="text-sm text-secondary">Every poultry house on your farm.</p>
+            <p className="text-sm text-secondary">All the poultry houses on your farm.</p>
           </div>
         </div>
         <button
@@ -76,7 +76,7 @@ export default function HousesPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold text-navy">Capacity</label>
+            <label className="mb-1 block text-xs font-semibold text-navy">How many birds it can hold</label>
             <input
               type="number"
               value={capacity}

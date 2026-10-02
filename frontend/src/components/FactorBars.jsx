@@ -2,7 +2,7 @@ import { statusFromScore, statusMeta } from '../lib/risk'
 
 // Each risk factor's `points` already sits on the same 0-100 scale as the
 // overall score, so it doubles directly as this factor's bar-fill percent.
-export default function FactorBars({ factors, emptyMessage = 'No risk factors detected — everything looks normal.' }) {
+export default function FactorBars({ factors, emptyMessage = 'No problems found - everything looks fine.' }) {
   if (!factors || factors.length === 0) {
     return <p className="text-sm text-secondary">{emptyMessage}</p>
   }

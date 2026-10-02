@@ -1,10 +1,12 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from google.cloud.firestore import Client
 
+from app.agent.agent_guardrails import PLAIN_LANGUAGE_RULE
 from app.agent.agent_router import is_greeting, select_skill_for_question
 from app.agent.flockguard_agent import run_agent
 from app.core.config import settings
@@ -41,14 +43,15 @@ SAFETY_RULES = (
     "things like \"this is Newcastle disease\").\n"
     "- Clearly distinguish observed data (what FlockGuard recorded) from your own "
     "inference or suggestions. Phrase concerns as symptoms/records, e.g. "
-    "\"records show increased mortality and reduced activity\" rather than a diagnosis.\n"
+    "\"your records show more birds dying and birds less active\" rather than a diagnosis.\n"
     "- Only use the data given to you below. If something is not in it, say plainly "
     "that the record isn't available - never invent farm data, numbers, or history.\n"
-    "- When risk is elevated, suggest concrete next steps (inspect water, feed, "
-    "ventilation, isolate affected birds) and, for Warning/Critical situations, "
+    "- When risk is high, suggest clear next steps (check the drinkers, the feed, "
+    "fresh air in the house, separate sick birds) and, for Warning/Critical situations, "
     "recommend consulting a qualified poultry professional or veterinarian if "
     "concerns continue.\n"
-    "- Be concise and speak plainly to a working farmer."
+    + PLAIN_LANGUAGE_RULE
+    + "- Keep it short."
 )
 
 SYSTEM_PROMPT = (
@@ -59,10 +62,38 @@ SYSTEM_PROMPT = (
     f"{SAFETY_RULES}"
 )
 
+# How the streamed Ask FlockGuard reply is written (POST /ask/stream). The
+# agent has already investigated; this turns its findings + general good
+# practice into a complete, well-formatted answer for the farmer.
+ANSWER_WRITER_RULES = (
+    "Now write your reply to the farmer's question.\n"
+    "Content:\n"
+    "- Answer the actual question fully. If it is a general poultry or business question "
+    "(e.g. preparing for Christmas sales), give practical, widely accepted advice for small and "
+    "medium poultry farms in Ghana / West Africa - a hot climate, local markets, local feed.\n"
+    "- Tie the advice to this farm's own facts where they matter (bird age, numbers, recent "
+    "deaths, risk level) - e.g. whether the birds will be ready in time for a date. Use only the "
+    "facts provided - never invent farm numbers.\n"
+    "- Never state prices, percentages, market patterns or best selling days as fact unless you "
+    "were given them; say \"check current prices at your local market\" instead.\n"
+    "- For money questions, cover both sides: keeping birds healthy (fewer losses) and selling well "
+    "(timing, finding buyers early, cutting waste).\n"
+    "- For each step, add a short reason (\"so that...\", \"because...\") so the farmer knows why it works.\n"
+    "- Vaccines and medicine: never name a drug or dose - say to follow the vet's vaccine plan.\n"
+    "Format (Markdown):\n"
+    "- Start with one or two sentences that directly answer the question.\n"
+    "- Bold only the key action in each step (a few words, once per step) - not whole sentences or "
+    "titles - so a farmer skimming sees exactly what to do.\n"
+    "- Use a numbered list for steps to do in order, bullet points for options or tips.\n"
+    "- If the answer has two clear parts, give each a short ### heading.\n"
+    "- Finish with one short line on what to watch for or when to call a vet, if it fits.\n"
+    "- Keep it under about 250 words. Finish every sentence - never stop mid-list.\n"
+)
+
 AI_UNAVAILABLE_MESSAGE = (
-    "FlockGuard AI is temporarily unavailable, so I can't answer that right now. "
-    "Your farm monitoring, Risk Engine, Radar and alerts are still working normally - "
-    "please try asking again shortly."
+    "FlockGuard AI is not available right now, so I can't answer that. "
+    "Your checks, risk numbers and warnings still work as normal - "
+    "please try asking again in a little while."
 )
 
 
@@ -110,20 +141,100 @@ async def ask_flockguard(
     decides for itself which controlled tools it needs to answer it,
     rather than this route pre-guessing and dumping a fixed context blob.
     """
+    direct_answer, state = await _investigate(payload, org_id, db)
+    if direct_answer is not None:
+        return {"answer": direct_answer}
+    return {"answer": _assessment_markdown(state.assessment), "assessment": state.assessment.model_dump(mode="json")}
+
+
+@router.post("/stream")
+@limiter.limit(settings.rate_limit_ask)
+async def ask_flockguard_stream(
+    request: Request,
+    payload: AskRequest,
+    org_id: str = Depends(get_current_org_id),
+    db: Client = Depends(get_firestore_client),
+):
+    """Same investigation as POST /ask, but the reply is written for the
+    farmer and streamed as plain text while it's generated, so the chat
+    shows it appearing word by word instead of waiting on (and being cut
+    to) the agent's short summary. Failures before any text is sent come
+    back as normal JSON errors (402/502); a stream that breaks midway falls
+    back to the agent's own findings so the farmer never gets a dead end.
+    """
+    direct_answer, state = await _investigate(payload, org_id, db)
+    if direct_answer is not None:
+        return _text_stream(_once(direct_answer))
+
+    assessment = state.assessment
+    findings = assessment.model_dump(mode="json", exclude={"house_id", "knowledge_sources"})
+    findings["sources"] = [s.get("title") for s in assessment.model_dump(mode="json")["knowledge_sources"]]
+    messages = [
+        {
+            "role": "system",
+            # The date lets it reason about timing ("Christmas is 12 weeks away").
+            "content": f"{SYSTEM_PROMPT}\n\n{ANSWER_WRITER_RULES}\nToday is {datetime.now(timezone.utc):%A %d %B %Y}.",
+        },
+        {"role": "system", "content": "What FlockGuard found on this farm (use these facts):\n" + json.dumps(findings)},
+        {"role": "user", "content": payload.question},
+    ]
+
+    async def body():
+        wrote_any = False
+        try:
+            async for chunk in grok_service.stream_chat(messages):
+                wrote_any = True
+                yield chunk
+        except Exception:  # noqa: BLE001 - never leave the farmer with a broken reply
+            _logger.exception("Ask FlockGuard answer stream failed")
+            if wrote_any:
+                yield "\n\n_The answer was cut off - please ask again._"
+        if not wrote_any:
+            yield _assessment_markdown(assessment)
+
+    return _text_stream(body())
+
+
+async def _once(text: str):
+    yield text
+
+
+def _text_stream(chunks) -> StreamingResponse:
+    # no-cache / no proxy buffering, so each piece reaches the browser as
+    # soon as it's written.
+    return StreamingResponse(
+        chunks,
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _assessment_markdown(assessment) -> str:
+    """The agent's own findings as a readable Markdown reply - used by
+    POST /ask and whenever the streamed write-up can't be produced."""
+    parts = [assessment.summary]
+    if assessment.recommended_actions:
+        parts.append("**What to do:**")
+        parts.append("\n".join(f"{i}. **{action}**" for i, action in enumerate(assessment.recommended_actions, 1)))
+    return "\n\n".join(parts)
+
+
+async def _investigate(payload: AskRequest, org_id: str, db: Client):
+    """Shared by /ask and /ask/stream. Returns (direct_answer, None) when no
+    AI run is needed, otherwise (None, completed agent state). Raises
+    402/502 HTTPExceptions for quota or AI failures."""
     if is_greeting(payload.question):
         # No agent run for a bare greeting - cheap, instant, and consistent
         # with this file's own docstring elsewhere about not spending an AI
         # call on something plain Python can already answer.
-        return {
-            "answer": (
-                "Hi! I'm here to help with your flocks, houses, alerts, and general poultry-care "
-                "questions - what would you like to know?"
-            )
-        }
+        return (
+            "Hi! I'm here to help with your flocks, houses, alerts, and general poultry-care "
+            "questions - what would you like to know?"
+        ), None
 
     farm_id = _resolve_farm_id(db, org_id, payload.farm_id)
     if not farm_id:
-        return {"answer": "You don't have a farm set up yet - finish onboarding first and I'll be able to help."}
+        return "You don't have a farm set up yet - finish onboarding first and I'll be able to help.", None
 
     house_id = None
     if payload.house_id:
@@ -150,7 +261,7 @@ async def ask_flockguard(
             raise HTTPException(status_code=402, detail=state.error_summary)
         raise HTTPException(status_code=502, detail=AI_UNAVAILABLE_MESSAGE)
 
-    return {"answer": state.assessment.summary, "assessment": state.assessment.model_dump(mode="json")}
+    return None, state
 
 
 @router.post("/explain")

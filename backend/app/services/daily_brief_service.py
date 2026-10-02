@@ -22,24 +22,24 @@ def build_daily_brief(farm_status: dict) -> dict:
 
     lines: list[str] = []
     if houses_total == 0:
-        lines.append("No houses set up yet - add a house to start getting daily briefs.")
+        lines.append("You have no houses yet - add a house to start getting your daily update.")
     else:
-        lines.append(f"{stable} of {houses_total} house{'s' if houses_total != 1 else ''} stable today.")
+        lines.append(f"{stable} of {houses_total} house{'s' if houses_total != 1 else ''} doing fine today.")
 
         if needs_attention:
             worst = needs_attention[0]
             lines.append(
-                f"{worst['house_name']} needs the most attention right now "
-                f"(risk {worst['risk_score']}, {worst['risk_status']})."
+                f"Check {worst['house_name']} first "
+                f"(risk {worst['risk_score']} out of 100, {worst['risk_status']})."
             )
 
         if missing_morning:
-            lines.append(f"Morning Check not yet completed for: {', '.join(missing_morning)}.")
+            lines.append(f"Morning check not done yet for: {', '.join(missing_morning)}.")
 
         lines.append(
-            f"{len(critical_alerts)} critical alert(s) active."
+            f"{len(critical_alerts)} serious warning(s) need your attention."
             if critical_alerts
-            else "No critical alerts are active."
+            else "No serious warnings right now."
         )
 
         if farm_status.get("trend_insights"):

@@ -118,7 +118,7 @@ async def _notify_new_alert(db: Client, *, org_id: str, farm_id: str, house_id: 
                 org_id=org_id,
                 uids=uids,
                 title=f"{house_name} needs attention",
-                body=f"{farm_name} is now at {alert['status'].capitalize()} risk (score {alert['score']}).",
+                body=f"{farm_name}: risk is now {alert['status'].capitalize()} ({alert['score']} out of 100). Go and check the birds.",
                 url=f"{settings.app_public_url}/alerts",
             )
 
@@ -136,10 +136,14 @@ def submit_flock_check(
 ):
     """Flock Check -> baseline comparison -> Risk Engine -> Alert Engine.
 
+    Requires an active flock in the house: `bird_count` is no longer
+    farmer-entered, it's derived as the flock's current_bird_count minus
+    this check's mortality, then persisted back onto both the check and the
+    flock doc.
+
     Also, on this write:
-    - looks up the house's currently active flock (if any) and stamps
-      `flock_id` on the check, so later queries/comparisons can scope by
-      flock, not just house
+    - stamps `flock_id` on the check, so later queries/comparisons can scope
+      by flock, not just house
     - persists `previous_risk_score` / `risk_change` / `previous_check_id`
       so "58 -> 81, +23" never needs a second Firestore scan to display
     - for an evening/emergency check, persists a structured
@@ -147,14 +151,31 @@ def submit_flock_check(
     """
     if not houses_ref(db, org_id, farm_id).document(house_id).get().exists:
         raise HTTPException(status_code=404, detail="House not found")
-    if payload.mortality > payload.bird_count:
-        raise HTTPException(status_code=422, detail="mortality cannot exceed bird_count")
+
+    flock_id = _active_flock_id(db, org_id, farm_id, house_id)
+    if flock_id is None:
+        raise HTTPException(
+            status_code=422, detail="Place an active flock in this house before logging a Flock Check"
+        )
+    flock_ref = flocks_ref(db, org_id, farm_id, house_id).document(flock_id)
+    flock_data = flock_ref.get().to_dict() or {}
 
     recent = _load_recent_checks(db, org_id, farm_id, house_id, RECENT_HISTORY_SAMPLE_SIZE)
     baseline = _load_baseline(recent[:BASELINE_SAMPLE_SIZE])
 
+    # Self-healing fallback for flocks that predate current_bird_count: fall
+    # back to the last recorded bird_count, then the placement-day snapshot.
+    # No backfill migration needed - the field is (re)persisted below.
+    current_count = flock_data.get("current_bird_count")
+    if current_count is None:
+        current_count = recent[0]["bird_count"] if recent else flock_data.get("initial_bird_count", 0)
+
+    if payload.mortality > current_count:
+        raise HTTPException(status_code=422, detail="mortality cannot exceed current bird count")
+    new_count = current_count - payload.mortality
+
     risk_input = FlockCheckInput(
-        bird_count=payload.bird_count,
+        bird_count=new_count,
         mortality=payload.mortality,
         sick_or_injured=payload.sick_or_injured,
         feed_kg=payload.feed_kg,
@@ -170,13 +191,13 @@ def submit_flock_check(
     previous_risk_score = previous_check.get("risk_score") if previous_check else None
     risk_change = risk.score - previous_risk_score if previous_risk_score is not None else None
 
-    flock_id = _active_flock_id(db, org_id, farm_id, house_id)
     farm = _get_farm(db, org_id, farm_id)
     recorded_at = datetime.now(timezone.utc)
     doc_ref = flock_checks_ref(db, org_id, farm_id, house_id).document()
 
     record = {
         **payload.model_dump(mode="json"),
+        "bird_count": new_count,
         "house_id": house_id,
         "flock_id": flock_id,
         "recorded_at": recorded_at.isoformat(),
@@ -200,6 +221,7 @@ def submit_flock_check(
     record["morning_comparison"] = morning_comparison
 
     doc_ref.set(record)
+    flock_ref.update({"current_bird_count": new_count})
 
     alert_result = sync_alert_for_check(
         db,
@@ -257,6 +279,7 @@ def submit_flock_check(
         previous_risk_score=previous_risk_score,
         risk_change=risk_change,
         morning_comparison=morning_comparison,
+        bird_count=new_count,
     )
 
 

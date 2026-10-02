@@ -98,7 +98,7 @@ def test_bird_usage_prefers_latest_check_over_initial_count(authed_client):
     )
     authed_client.post(
         f"/farms/{farm['id']}/houses/{house['id']}/flock-checks",
-        json={"period": "morning", "bird_count": 985, "mortality": 15},
+        json={"period": "morning", "mortality": 15},
     )
 
     usage = authed_client.get("/billing/usage").json()

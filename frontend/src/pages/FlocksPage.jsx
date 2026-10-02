@@ -91,7 +91,7 @@ export default function FlocksPage() {
           </span>
           <div>
             <h1 className="font-display text-2xl font-extrabold text-navy">Flocks</h1>
-            <p className="text-sm text-secondary">Every active and past flock across your houses.</p>
+            <p className="text-sm text-secondary">All your flocks - the ones you have now and past ones.</p>
           </div>
         </div>
         <div className="relative">
@@ -164,7 +164,7 @@ export default function FlocksPage() {
                           </span>
                           <div>
                             <p className="font-semibold text-navy">Flock {flockCodes[flock.id]}</p>
-                            <p className="text-xs capitalize text-secondary">{flock.bird_type || 'Unspecified type'}</p>
+                            <p className="text-xs capitalize text-secondary">{flock.bird_type || 'Type not set'}</p>
                           </div>
                         </div>
                       </td>

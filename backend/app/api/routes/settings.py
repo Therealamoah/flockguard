@@ -55,8 +55,8 @@ DEFAULT_SETTINGS = {
 
 RISK_METHOD_INFO = {
     "name": "FlockGuard Standard",
-    "description": "Risk scores are generated from your flock records and recent historical patterns.",
-    "disclaimer": "FlockGuard provides early-warning decision support and does not provide veterinary diagnosis.",
+    "description": "The risk number comes from what you record in your checks, compared with how your birds were doing before.",
+    "disclaimer": "FlockGuard warns you early when something looks wrong. It is not a vet and cannot tell you what disease the birds have.",
     # Deliberately not user-configurable - Normal/Watch/Warning/Critical
     # thresholds and factor weights (app/risk_engine/) stay FlockGuard-controlled.
     "configurable": False,

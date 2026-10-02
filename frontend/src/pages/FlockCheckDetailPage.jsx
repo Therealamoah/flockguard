@@ -21,6 +21,7 @@ import StatCard from '../components/StatCard'
 import FactorBars from '../components/FactorBars'
 import { statusMeta } from '../lib/risk'
 import { formatClock } from '../lib/time'
+import { ACTIVITY_LABELS, FEEDING_LABELS, PERIOD_LABELS, WATER_LABELS } from '../lib/checkLabels'
 
 export default function FlockCheckDetailPage() {
   const { houseId, checkId } = useParams()
@@ -38,7 +39,7 @@ export default function FlockCheckDetailPage() {
         if (!cancelled) setCheck(data)
       })
       .catch(() => {
-        if (!cancelled) setError('Could not load this Flock Check.')
+        if (!cancelled) setError('Could not open this check.')
       })
     return () => {
       cancelled = true
@@ -50,23 +51,23 @@ export default function FlockCheckDetailPage() {
     return (
       <div className="flex items-center justify-center gap-2 p-6 text-sm text-secondary">
         <Loader2 size={16} className="animate-spin" />
-        Loading Flock Check...
+        Opening check...
       </div>
     )
   }
 
   const meta = statusMeta(check.risk_status)
   const observations = [
-    check.crowding_observed && 'Crowding observed',
-    check.unusual_sound_observed && 'Unusual noise observed',
-    check.sick_or_injured > 0 && `${check.sick_or_injured} sick/injured birds`,
+    check.crowding_observed && 'Huddling together',
+    check.unusual_sound_observed && 'Coughing / strange sounds',
+    check.sick_or_injured > 0 && `${check.sick_or_injured} sick or hurt birds`,
   ].filter(Boolean)
 
   return (
     <div className="mx-auto max-w-2xl p-6">
       <Link to="/checks" className="flex items-center gap-1 text-xs font-semibold text-forest">
         <ChevronLeft size={14} />
-        All Flock Checks
+        All checks
       </Link>
 
       <div className="mt-3 flex flex-wrap items-start justify-between gap-4 rounded-xl border border-hairline bg-surface p-5 shadow-sm">
@@ -77,7 +78,7 @@ export default function FlockCheckDetailPage() {
           <div>
             <h1 className="font-display text-2xl font-extrabold text-navy">{house?.name || houseId}</h1>
             <p className="mt-1 text-sm capitalize text-secondary">
-              {check.period} check · {formatClock(check.recorded_at)}
+              {PERIOD_LABELS[check.period] || check.period} check · {formatClock(check.recorded_at)}
             </p>
           </div>
         </div>
@@ -93,19 +94,19 @@ export default function FlockCheckDetailPage() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-muted">Risk score / 100</p>
+            <p className="text-xs text-muted">Risk (out of 100)</p>
             <StatusBadge status={check.risk_status} size="sm" />
           </div>
         </div>
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Bird Count" value={check.bird_count ?? '—'} Icon={Users} iconColor="#1B4332" />
-        <StatCard label="Mortality" value={check.mortality ?? '—'} Icon={Skull} iconColor="#C8433A" />
-        <StatCard label="Feed (kg)" value={check.feed_kg ?? '—'} Icon={Wheat} iconColor="#C05A1D" />
+        <StatCard label="Birds" value={check.bird_count ?? '—'} Icon={Users} iconColor="#1B4332" />
+        <StatCard label="Dead birds" value={check.mortality ?? '—'} Icon={Skull} iconColor="#C8433A" />
+        <StatCard label="Feed eaten (kg)" value={check.feed_kg ?? '—'} Icon={Wheat} iconColor="#C05A1D" />
         <StatCard
-          label="Water"
-          value={check.water_liters ? `${check.water_liters}L` : check.water_level ?? '—'}
+          label="Water drunk"
+          value={check.water_liters ? `${check.water_liters}L` : WATER_LABELS[check.water_level] ?? '—'}
           Icon={Droplets}
           iconColor="#6C63D6"
         />
@@ -115,20 +116,20 @@ export default function FlockCheckDetailPage() {
         <div className="rounded-xl border border-hairline bg-surface p-4 shadow-sm">
           <p className="flex items-center gap-1.5 text-xs text-muted">
             <Activity size={13} />
-            Activity
+            Moving around
           </p>
-          <p className="mt-1 text-sm font-semibold capitalize text-navy">{check.activity}</p>
+          <p className="mt-1 text-sm font-semibold capitalize text-navy">{ACTIVITY_LABELS[check.activity] || check.activity}</p>
         </div>
         <div className="rounded-xl border border-hairline bg-surface p-4 shadow-sm">
           <p className="flex items-center gap-1.5 text-xs text-muted">
             <Utensils size={13} />
-            Feeding behaviour
+            Eating
           </p>
-          <p className="mt-1 text-sm font-semibold capitalize text-navy">{check.feeding_behaviour}</p>
+          <p className="mt-1 text-sm font-semibold capitalize text-navy">{FEEDING_LABELS[check.feeding_behaviour] || check.feeding_behaviour}</p>
         </div>
         {observations.length > 0 ? (
           <div className="rounded-xl border border-hairline bg-surface p-4 shadow-sm sm:col-span-2">
-            <p className="text-xs text-muted">Other observations</p>
+            <p className="text-xs text-muted">Also seen</p>
             <p className="mt-1 text-sm text-navy">{observations.join(' · ')}</p>
           </div>
         ) : null}
@@ -140,7 +141,7 @@ export default function FlockCheckDetailPage() {
             <Stethoscope size={14} />
           </span>
           <h2 className="text-sm font-bold text-navy">
-            {check.risk_factors?.length > 0 ? 'Why this check was flagged' : 'Risk factor breakdown'}
+            {check.risk_factors?.length > 0 ? 'Why this check needs a look' : 'Problems found'}
           </h2>
         </div>
         <div className="mt-4">
@@ -166,7 +167,7 @@ export default function FlockCheckDetailPage() {
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-forest/10 text-forest">
               <ImageIcon size={14} />
             </span>
-            <h2 className="text-sm font-bold text-navy">Media</h2>
+            <h2 className="text-sm font-bold text-navy">Photos & Voice</h2>
           </div>
           <div className="mt-4 space-y-3">
             {check.photo_url ? (
@@ -182,7 +183,7 @@ export default function FlockCheckDetailPage() {
           to={`/houses/${houseId}`}
           className="rounded-lg border border-hairline px-5 py-2.5 text-sm font-bold text-navy hover:bg-forest/5"
         >
-          View House
+          See house
         </Link>
       </div>
     </div>

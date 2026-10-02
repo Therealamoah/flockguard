@@ -40,6 +40,20 @@ class FakeSnapshot:
         return dict(self._data) if self._data is not None else None
 
 
+# Firestore never matches a range filter against a missing field.
+_OPS = {
+    "==": lambda a, b: a == b,
+    "<": lambda a, b: a is not None and a < b,
+    "<=": lambda a, b: a is not None and a <= b,
+    ">": lambda a, b: a is not None and a > b,
+    ">=": lambda a, b: a is not None and a >= b,
+}
+
+
+def _matches(actual, op, expected) -> bool:
+    return _OPS[op](actual, expected)
+
+
 class FakeQuery:
     def __init__(self, store: dict, path: tuple, filters=None, order=None, limit_n=None):
         self._store = store
@@ -57,9 +71,9 @@ class FakeQuery:
         return FakeDocumentRef(self._store, self._path[:-1])
 
     def where(self, field, op, value):
-        if op != "==":
-            raise NotImplementedError("FakeFirestore only supports '==' filters")
-        return FakeQuery(self._store, self._path, self._filters + [(field, value)], self._order, self._limit_n)
+        if op not in _OPS:
+            raise NotImplementedError(f"FakeFirestore does not support {op!r} filters")
+        return FakeQuery(self._store, self._path, self._filters + [(field, op, value)], self._order, self._limit_n)
 
     def order_by(self, field, direction=Query.ASCENDING):
         return FakeQuery(self._store, self._path, self._filters, (field, direction), self._limit_n)
@@ -72,7 +86,7 @@ class FakeQuery:
         for doc_path, data in self._store.items():
             if not path_predicate(doc_path):
                 continue
-            if all(data.get(field) == value for field, value in self._filters):
+            if all(_matches(data.get(field), op, value) for field, op, value in self._filters):
                 matches.append((doc_path, data))
         return matches
 
@@ -111,8 +125,8 @@ class FakeCollectionGroupQuery(FakeQuery):
 
     def where(self, field, op, value):
         if op != "==":
-            raise NotImplementedError("FakeFirestore only supports '==' filters")
-        return FakeCollectionGroupQuery(self._store, self._collection_id, self._filters + [(field, value)])
+            raise NotImplementedError("FakeFirestore only supports '==' filters on collection groups")
+        return FakeCollectionGroupQuery(self._store, self._collection_id, self._filters + [(field, op, value)])
 
     def stream(self):
         matches = self._matching_docs(lambda doc_path: len(doc_path) >= 2 and doc_path[-2] == self._collection_id)

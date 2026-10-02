@@ -37,6 +37,19 @@ enough to retheme the whole app without touching any component. */
 
   /* AI accent */
   --color-ai: #6c63d6;
+
+  /* Chart series - categorical, assigned in this fixed order (never by
+  rank). All 8 validated (dataviz validate_palette.js) against the light
+  surface #ffffff: 3 aqua / 4 yellow / 5 magenta sit under 3:1 contrast,
+  so charts using them always show a labelled legend with values. */
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
+  --color-series-7: #4a3aa7;
+  --color-series-8: #e34948;
 }
 
 /* Dark theme - "black with a pitch of forest green": a near-black ground
@@ -60,6 +73,16 @@ the entire dark theme - no component needs a `dark:` class of its own. */
   --color-warning: #e2813f;
   --color-critical: #e2564b;
   --color-ai: #8f86f2;
+
+  /* Same hues stepped for the dark surface #121815 - all pass 3:1. */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-series-5: #d55181;
+  --color-series-6: #008300;
+  --color-series-7: #9085e9;
+  --color-series-8: #e66767;
 }
 
 body {
@@ -92,5 +115,31 @@ loading screen, never repeated across a page. */
   50% {
     transform: scale(1.08);
     opacity: 0.75;
+  }
+}
+
+/* Scan Flock AI camera - a line sweeping down the viewfinder while the
+frame is being reviewed. */
+@keyframes scan-line {
+  0% {
+    top: 0%;
+  }
+  50% {
+    top: 100%;
+  }
+  100% {
+    top: 0%;
+  }
+}
+
+/* Ask FlockGuard status line - each new step fades/slides in gently. */
+@keyframes status-fade {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

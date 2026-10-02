@@ -187,8 +187,8 @@ async def send_alert_email(
 
     factor_lines = "\n".join(f"- {f}" for f in factors[:5])
     text_body = (
-        f"{house_name} on {farm_name} is now at {status_label} risk (score {score}).\n\n"
-        + (f"What's driving it:\n{factor_lines}\n\n" if factor_lines else "")
+        f"{house_name} on {farm_name} needs a check: risk is now {status_label} ({score} out of 100).\n\n"
+        + (f"What we noticed:\n{factor_lines}\n\n" if factor_lines else "")
         + f"Check it here: {alerts_url}\n\n"
         "- FlockGuard"
     )
@@ -206,10 +206,10 @@ async def send_alert_email(
       </span>
       <h2 style="color:#1B4332;margin:12px 0 4px;">{house_name} needs attention</h2>
       <p style="color:#475569;font-size:14px;">
-        Risk score is now <strong>{score}</strong> on <strong>{farm_name}</strong>.
+        Risk is now <strong>{score} out of 100</strong> on <strong>{farm_name}</strong>. Please go and check the birds.
       </p>
       {factors_html}
-      {_cta_button("View Alert", alerts_url)}
+      {_cta_button("See the warning", alerts_url)}
     """
     html_body = _html_shell(f"{house_name} is at {status_label} risk", body_html)
 

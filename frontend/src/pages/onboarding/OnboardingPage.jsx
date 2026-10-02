@@ -159,7 +159,7 @@ export default function OnboardingPage() {
               <h1 className="mt-3 font-display text-3xl font-extrabold text-navy">
                 Set up your first poultry house
               </h1>
-              <p className="mt-2 text-sm text-secondary">Each house tracks its own risk and flock history.</p>
+              <p className="mt-2 text-sm text-secondary">FlockGuard keeps track of each house on its own.</p>
 
               <label className="mt-6 mb-1 block text-sm font-semibold text-navy">House name</label>
               <input
@@ -170,7 +170,7 @@ export default function OnboardingPage() {
                 className="w-full rounded-lg border border-hairline px-3 py-2.5 text-sm outline-none focus:border-forest"
               />
 
-              <label className="mt-4 mb-1 block text-sm font-semibold text-navy">Capacity (birds)</label>
+              <label className="mt-4 mb-1 block text-sm font-semibold text-navy">How many birds it can hold</label>
               <input
                 type="number"
                 min="1"
@@ -210,7 +210,7 @@ export default function OnboardingPage() {
                 <p className="text-xs font-bold uppercase tracking-wide text-forest">Step 3 of 3</p>
               </div>
               <h1 className="mt-3 font-display text-3xl font-extrabold text-navy">Add your first flock</h1>
-              <p className="mt-2 text-sm text-secondary">Tell us what's currently living in this house.</p>
+              <p className="mt-2 text-sm text-secondary">Tell us about the birds in this house now.</p>
 
               <label className="mt-6 mb-1 block text-sm font-semibold text-navy">Bird type</label>
               <div className="flex gap-2">
@@ -242,7 +242,7 @@ export default function OnboardingPage() {
 
               <div className="mt-4 grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1 block text-sm font-semibold text-navy">Birds placed</label>
+                  <label className="mb-1 block text-sm font-semibold text-navy">How many birds you put in</label>
                   <input
                     type="number"
                     min="1"
@@ -254,7 +254,7 @@ export default function OnboardingPage() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-semibold text-navy">Placement date</label>
+                  <label className="mb-1 block text-sm font-semibold text-navy">Date the birds came in</label>
                   <input
                     type="date"
                     required
@@ -299,7 +299,7 @@ export default function OnboardingPage() {
                 onClick={handleFinish}
                 className="mt-6 rounded-lg bg-forest px-6 py-3 text-sm font-bold text-white hover:bg-forest-dark"
               >
-                Go to Dashboard
+                Go to my farm
               </button>
             </div>
           ) : null}

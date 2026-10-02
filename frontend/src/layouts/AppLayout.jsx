@@ -30,7 +30,7 @@ import { onForegroundPush } from '../lib/push'
 import { displayName, initialsFor } from '../lib/format'
 
 const NAV = [
-  { to: '/overview', label: 'Overview', Icon: Home, end: true },
+  { to: '/overview', label: 'Home', Icon: Home, end: true },
   { to: '/radar', label: 'AI Radar', Icon: RadarIcon },
   { to: '/flocks', label: 'Flocks', Icon: Bird },
   { to: '/houses', label: 'Houses', Icon: Warehouse },
@@ -43,15 +43,15 @@ const NAV = [
 const MANAGEMENT_NAV = [
   { to: '/team', label: 'Team', Icon: Users },
   { to: '/settings', label: 'Settings', Icon: Settings },
-  { to: '/billing', label: 'Billing', Icon: CreditCard },
+  { to: '/billing', label: 'Plan & payment', Icon: CreditCard },
 ]
 
 const MOBILE_NAV = [
   { to: '/overview', label: 'Home', Icon: Home, end: true },
-  { to: '/radar', label: 'Radar', Icon: RadarIcon },
+  { to: '/radar', label: 'Risk', Icon: RadarIcon },
   { to: '/checks/new', label: 'CHECK', Icon: Plus, emphasize: true },
-  { to: '/alerts', label: 'Alerts', Icon: ShieldAlert },
-  { to: '/ask', label: 'AI', Icon: Sparkles },
+  { to: '/alerts', label: 'Warnings', Icon: ShieldAlert },
+  { to: '/ask', label: 'Ask', Icon: Sparkles },
 ]
 
 const PUSH_TOAST_LIFETIME_MS = 8000

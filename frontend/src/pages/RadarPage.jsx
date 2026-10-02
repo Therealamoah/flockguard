@@ -36,8 +36,8 @@ export default function RadarPage() {
           <Radar size={20} />
         </span>
         <div>
-          <h1 className="font-display text-2xl font-extrabold text-navy">AI Health Radar</h1>
-          <p className="text-sm text-secondary">Which poultry house should I inspect first?</p>
+          <h1 className="font-display text-2xl font-extrabold text-navy">Which house first?</h1>
+          <p className="text-sm text-secondary">Houses with the highest risk are at the top. Check those first.</p>
         </div>
       </div>
 
@@ -46,12 +46,12 @@ export default function RadarPage() {
           {isLoading ? (
             <div className="flex items-center gap-2 py-16 text-sm text-secondary">
               <Loader2 size={16} className="animate-spin" />
-              Loading radar...
+              Getting your houses...
             </div>
           ) : checked.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-16 text-center">
               <Radar size={28} className="text-muted" />
-              <p className="text-sm text-secondary">No Flock Checks recorded yet.</p>
+              <p className="text-sm text-secondary">No checks done yet.</p>
             </div>
           ) : (
             <RadarCanvas houses={checked} size={360} showLegend onSelectHouse={(id) => navigate(`/houses/${id}`)} />
@@ -59,7 +59,7 @@ export default function RadarPage() {
         </div>
 
         <div className="w-full rounded-xl border border-hairline bg-surface p-5 shadow-sm lg:w-80">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-secondary">Priority Queue</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-secondary">Check in this order</h2>
           <ol className="mt-3 space-y-1.5">
             {houses.map((house, i) => {
               const meta = statusMeta(house.risk_status)
@@ -87,7 +87,7 @@ export default function RadarPage() {
                         {inspectNow ? (
                           <span className="flex items-center gap-0.5 whitespace-nowrap text-xs font-semibold text-critical">
                             <AlertTriangle size={11} className="shrink-0" />
-                            Inspect now
+                            Check now
                           </span>
                         ) : null}
                       </span>

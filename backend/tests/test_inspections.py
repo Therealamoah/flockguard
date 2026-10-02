@@ -1,9 +1,12 @@
 def _setup_alert(client, farm_id, house_id):
+    client.post(
+        f"/farms/{farm_id}/houses/{house_id}/flocks",
+        json={"bird_type": "broiler", "breed": "Cobb 500", "start_date": "2026-01-01", "initial_bird_count": 1000},
+    )
     return client.post(
         f"/farms/{farm_id}/houses/{house_id}/flock-checks",
         json={
             "period": "morning",
-            "bird_count": 1000,
             "mortality": 0,
             "activity": "lethargic",
             "feeding_behaviour": "none",

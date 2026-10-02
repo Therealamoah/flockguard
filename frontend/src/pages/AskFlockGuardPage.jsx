@@ -17,22 +17,24 @@ import { api } from '../lib/api'
 import { useAuthStore } from '../store/useAuthStore'
 import { useAppStore } from '../store/useAppStore'
 import { displayName, initialsFor } from '../lib/format'
+import ChatMarkdown from '../components/ChatMarkdown'
+import { statusStagesFor } from '../lib/askStatus'
 
 const SUGGESTIONS = [
-  { Icon: ShieldAlert, text: 'Which house should I inspect first?' },
+  { Icon: ShieldAlert, text: 'Which house should I check first?' },
   { Icon: Clock, text: 'What changed since yesterday?' },
-  { Icon: ClipboardList, text: 'Summarize my farm today.' },
-  { Icon: TrendingUp, text: 'Has mortality increased this week?' },
-  { Icon: Building2, text: 'Which house has the highest risk score?' },
-  { Icon: ClipboardCheck, text: "What should I check during today's inspection?" },
+  { Icon: ClipboardList, text: 'How is my farm doing today?' },
+  { Icon: TrendingUp, text: 'Are more birds dying this week?' },
+  { Icon: Building2, text: 'Which house has the highest risk?' },
+  { Icon: ClipboardCheck, text: "What should I look at when I check the birds today?" },
   { Icon: BarChart3, text: 'Compare this week to last week.' },
-  { Icon: Bell, text: 'Any unresolved alerts I should know about?' },
+  { Icon: Bell, text: 'Any warnings I have not sorted out?' },
 ]
 
 const QUICK_CHIPS = SUGGESTIONS.slice(0, 4)
 
 const AI_UNAVAILABLE_MESSAGE =
-  "FlockGuard AI is temporarily unavailable right now. Your farm monitoring, Risk Engine, Radar and alerts are still working normally - please try asking again shortly."
+  "FlockGuard AI is not available right now. Your checks, risk numbers and warnings still work as normal - please try asking again in a little while."
 
 const SESSION_EXPIRED_MESSAGE = "Your session couldn't be verified - please refresh the page and try again."
 
@@ -48,7 +50,37 @@ function messageForAskError(err) {
   // AI is not the problem, the request never got a valid Authorization
   // header, so say so rather than blaming "AI unavailable."
   if (err.status === 401) return SESSION_EXPIRED_MESSAGE
+  // 402 = monthly AI limit reached - the backend's own message says which plan.
+  if (err.status === 402 && err.detail) return err.detail
   return AI_UNAVAILABLE_MESSAGE
+}
+
+// Steps through topic-matched status lines while the answer is being
+// prepared (every few seconds; the last line stays), with a soft fade so the
+// change reads as progress rather than flicker.
+const STAGE_MS = 2800
+
+function ThinkingStatus({ question }) {
+  const stages = statusStagesFor(question)
+  const [stage, setStage] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setStage((s) => Math.min(s + 1, stages.length - 1)), STAGE_MS)
+    return () => clearInterval(id)
+  }, [stages.length])
+
+  return (
+    <span className="flex items-center gap-2 text-secondary" role="status" aria-live="polite">
+      <span className="flex shrink-0 gap-1">
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ai/60 [animation-delay:-0.3s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ai/60 [animation-delay:-0.15s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ai/60" />
+      </span>
+      <span key={stage} className="animate-[status-fade_0.4s_ease-out]">
+        {stages[stage]}
+      </span>
+    </span>
+  )
 }
 
 function timeGreeting() {
@@ -94,11 +126,22 @@ export default function AskFlockGuardPage() {
     setInput('')
     requestAnimationFrame(resizeTextarea)
     setIsSending(true)
+    // The reply bubble appears straight away and fills in as the answer
+    // streams - "Checking your farm records..." until the first words land.
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', streaming: true, question: text, at: new Date() }])
+    const updateReply = (patch) =>
+      setMessages((prev) => {
+        const next = [...prev]
+        next[next.length - 1] = { ...next[next.length - 1], ...patch }
+        return next
+      })
     try {
-      const { answer } = await api.ask(text, { farmId: currentFarmId, houseId: houseId || undefined })
-      setMessages((prev) => [...prev, { role: 'assistant', content: answer, at: new Date() }])
+      await api.askStream(text, { farmId: currentFarmId, houseId: houseId || undefined }, (soFar) =>
+        updateReply({ content: soFar })
+      )
+      updateReply({ streaming: false })
     } catch (err) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: messageForAskError(err), at: new Date() }])
+      updateReply({ content: messageForAskError(err), streaming: false })
     } finally {
       setIsSending(false)
     }
@@ -127,7 +170,7 @@ export default function AskFlockGuardPage() {
                 AI
               </span>
             </div>
-            <p className="text-sm text-secondary">Grounded in your farm's real data.</p>
+            <p className="text-sm text-secondary">Answers come from your own farm records.</p>
           </div>
         </div>
 
@@ -191,8 +234,7 @@ export default function AskFlockGuardPage() {
               {timeGreeting()}, {firstName}.
             </h2>
             <p className="mt-2 max-w-md text-sm text-secondary">
-              I'm your farm intelligence assistant. Ask me anything about your houses, flocks, risk scores, or
-              recent alerts - every answer is grounded in your farm's actual data.
+              Ask me anything about your houses, birds, risk or warnings. I answer from your own farm records.
             </p>
 
             <div className="mt-8 grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -219,14 +261,25 @@ export default function AskFlockGuardPage() {
                     <Bot size={15} />
                   </span>
                 ) : null}
-                <div className={m.role === 'user' ? 'flex max-w-lg flex-col items-end' : 'flex max-w-lg flex-col items-start'}>
+                <div className={m.role === 'user' ? 'flex max-w-lg flex-col items-end' : 'flex max-w-2xl flex-col items-start'}>
                   <div
                     className={[
-                      'rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words',
-                      m.role === 'user' ? 'rounded-tr-sm bg-forest text-white' : 'rounded-tl-sm bg-bg text-navy',
+                      'rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words',
+                      m.role === 'user' ? 'whitespace-pre-wrap rounded-tr-sm bg-forest text-white' : 'rounded-tl-sm bg-bg text-navy',
                     ].join(' ')}
                   >
-                    {m.content}
+                    {m.role === 'user' ? (
+                      m.content
+                    ) : m.streaming && !m.content ? (
+                      <ThinkingStatus question={m.question} />
+                    ) : (
+                      <>
+                        <ChatMarkdown text={m.content} />
+                        {m.streaming ? (
+                          <span className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-pulse rounded-sm bg-ai/70" aria-hidden="true" />
+                        ) : null}
+                      </>
+                    )}
                   </div>
                   <span className="mt-1 px-1 text-[11px] text-muted">{formatTime(m.at)}</span>
                 </div>
@@ -237,18 +290,6 @@ export default function AskFlockGuardPage() {
                 ) : null}
               </div>
             ))}
-            {isSending ? (
-              <div className="flex items-start gap-2.5">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-ai/20 to-ai/5 text-ai ring-1 ring-ai/15">
-                  <Bot size={15} />
-                </span>
-                <span className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-bg px-4 py-3">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-navy/30 [animation-delay:-0.3s]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-navy/30 [animation-delay:-0.15s]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-navy/30" />
-                </span>
-              </div>
-            ) : null}
           </div>
         )}
       </div>
@@ -281,7 +322,7 @@ export default function AskFlockGuardPage() {
         </button>
       </form>
       <p className="mt-2 text-center text-[11px] text-muted">
-        FlockGuard AI can make mistakes. Always verify critical farm decisions.
+        FlockGuard AI can make mistakes. Check the birds yourself before big decisions.
       </p>
     </div>
   )

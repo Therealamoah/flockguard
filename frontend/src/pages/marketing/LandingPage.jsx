@@ -17,39 +17,39 @@ const FEATURES = [
   {
     Icon: ClipboardList,
     title: 'Morning & evening flock checks',
-    body: 'Log mortality, feed, water and activity in seconds - FlockGuard compares each check against the house\'s own history automatically.',
+    body: 'Record dead birds, feed, water and how the birds look in seconds - or just say it out loud. FlockGuard compares it with how that house usually does.',
   },
   {
     Icon: RadarIcon,
-    title: 'The FlockGuard Risk Engine',
-    body: 'Every check is instantly scored 0-100 against that house\'s own history, so you always know exactly why a house is flagged - no black box, no waiting.',
+    title: 'A clear risk number',
+    body: 'Every check gets a risk number from 0 to 100, with the reasons in plain words - so you know which house to check first and why.',
   },
   {
     Icon: ShieldAlert,
-    title: 'Alerts that don\'t repeat themselves',
-    body: 'One open alert per house, automatically resolved when a house returns to normal or an inspection closes it out - no duplicate noise.',
+    title: 'Warnings without the noise',
+    body: 'One warning per house, not ten. It clears by itself when the birds are back to normal, or when you record what you found.',
   },
   {
     Icon: Sparkles,
     title: 'Ask FlockGuard',
-    body: 'A grounded AI assistant that investigates using your real farm data and an approved poultry-knowledge library - never invented numbers, never a diagnosis.',
+    body: 'Ask questions in simple English and get answers from your own farm records and trusted poultry guides. It never makes up numbers and never names a disease.',
   },
   {
     Icon: Users,
     title: 'Built for a team',
-    body: 'Owners, managers and workers each see what they need, with real role-based permissions - not everyone gets the same keys to the farm.',
+    body: 'Owners, managers and farm workers each get their own login and access, so everyone sees what they need.',
   },
   {
     Icon: BarChart3,
     title: 'Trends you can act on',
-    body: 'House comparisons, mortality/feed/water history and pattern detection across flocks, so problems show up before they become emergencies.',
+    body: 'Compare houses and see dead birds, feed and water over time, so you catch problems before they get big.',
   },
 ]
 
 const STEPS = [
-  { n: '01', title: 'Log a check', body: 'A worker records a Morning or Evening Flock Check from any device.' },
-  { n: '02', title: 'The Risk Engine scores it', body: 'Instantly compared against that house\'s own recent baseline - a precise 0-100 score, every time.' },
-  { n: '03', title: 'You get alerted, with evidence', body: 'If something needs attention, an alert opens and FlockGuard\'s AI explains what changed and why - grounded in your real data.' },
+  { n: '01', title: 'Log a check', body: 'A worker does the morning or evening check on their phone.' },
+  { n: '02', title: 'FlockGuard gives it a risk number', body: 'It is compared with how that house usually does, and gets a number from 0 to 100 straight away.' },
+  { n: '03', title: 'You get warned, with reasons', body: 'If something is wrong, you get a warning and the AI explains in simple words what changed and why.' },
 ]
 
 export default function LandingPage() {
@@ -100,9 +100,8 @@ export default function LandingPage() {
             Know a flock is in trouble before it's a crisis.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base text-white/80 sm:text-lg">
-            FlockGuard is an early-warning platform for poultry farms - a transparent Risk Engine scores every
-            flock check, deduplicated alerts tell you what actually needs attention, and a grounded AI assistant
-            explains why, using your farm's real data.
+            FlockGuard warns poultry farmers early when birds start getting sick. Do a quick check each morning
+            and evening, and FlockGuard tells you which house needs you first - and explains why in simple words.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link

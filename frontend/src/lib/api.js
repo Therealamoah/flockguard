@@ -15,22 +15,53 @@ export async function apiFetch(path, options = {}) {
     },
   })
 
-  if (!response.ok) {
-    const body = await response.text()
-    let detail = null
-    try {
-      detail = JSON.parse(body)?.detail ?? null
-    } catch {
-      // Not JSON (a proxy error page, etc.) - fall through with detail=null.
-    }
-    const error = new Error(`API ${response.status}: ${body}`)
-    error.status = response.status
-    error.detail = typeof detail === 'string' ? detail : null
-    throw error
-  }
+  if (!response.ok) throw await toApiError(response)
 
   if (response.status === 204) return null
   return response.json()
+}
+
+async function toApiError(response) {
+  const body = await response.text()
+  let detail = null
+  try {
+    detail = JSON.parse(body)?.detail ?? null
+  } catch {
+    // Not JSON (a proxy error page, etc.) - fall through with detail=null.
+  }
+  const error = new Error(`API ${response.status}: ${body}`)
+  error.status = response.status
+  error.detail = typeof detail === 'string' ? detail : null
+  return error
+}
+
+// Ask FlockGuard, streamed: calls onText(fullTextSoFar) every time more of
+// the answer arrives, and resolves with the complete answer. Errors before
+// the answer starts throw the same shape as apiFetch (status/detail).
+async function askStream(question, { houseId, farmId } = {}, onText) {
+  const idToken = await getIdToken()
+  const response = await fetch(`${API_BASE_URL}/ask/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+    },
+    body: JSON.stringify({ question, house_id: houseId, farm_id: farmId }),
+  })
+  if (!response.ok) throw await toApiError(response)
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    text += decoder.decode(value, { stream: true })
+    onText(text)
+  }
+  text += decoder.decode()
+  onText(text)
+  return text
 }
 
 const post = (path, data) => apiFetch(path, { method: 'POST', body: data !== undefined ? JSON.stringify(data) : undefined })
@@ -56,6 +87,8 @@ export const api = {
     create: (farmId, houseId, data) => post(`/farms/${farmId}/houses/${houseId}/flocks`, data),
     update: (farmId, houseId, flockId, data) =>
       patch(`/farms/${farmId}/houses/${houseId}/flocks/${flockId}`, data),
+    reconcileCount: (farmId, houseId, flockId, data) =>
+      post(`/farms/${farmId}/houses/${houseId}/flocks/${flockId}/reconcile-count`, data),
   },
   flockChecks: {
     list: (farmId, houseId) => get(`/farms/${farmId}/houses/${houseId}/flock-checks`),
@@ -85,19 +118,33 @@ export const api = {
   analytics: {
     houseTrends: (farmId, houseId, limit) =>
       get(`/farms/${farmId}/houses/${houseId}/analytics/trends${limit ? `?limit=${limit}` : ''}`),
+    // Every check between two Date objects (oldest first).
+    houseTrendsBetween: (farmId, houseId, start, end) =>
+      get(
+        `/farms/${farmId}/houses/${houseId}/analytics/trends?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
+      ),
     compareHouses: (farmId) => get(`/farms/${farmId}/analytics/compare-houses`),
     trendInsights: (farmId) => get(`/farms/${farmId}/analytics/trend-insights`),
     dailyBrief: (farmId) => get(`/farms/${farmId}/daily-brief`),
   },
   ask: (question, { houseId, farmId } = {}) => post('/ask', { question, house_id: houseId, farm_id: farmId }),
+  askStream,
   askExplain: (farmId, houseId, checkId) =>
     post('/ask/explain', { farm_id: farmId, house_id: houseId, check_id: checkId }),
   askDailyBrief: (farmId) => get(`/ask/daily-brief${farmId ? `?farm_id=${farmId}` : ''}`),
   media: {
-    upload: (file, resourceType = 'image') => {
+    upload: (file, resourceType = 'image', { analyze = true } = {}) => {
       const form = new FormData()
       form.append('file', file)
-      return apiFetch(`/media/upload?resource_type=${resourceType}`, { method: 'POST', body: form })
+      return apiFetch(`/media/upload?resource_type=${resourceType}&analyze=${analyze}`, { method: 'POST', body: form })
+    },
+    // AI camera frame review - never stored (see backend routes/media.py::scan).
+    // Times out so a dropped/changed network never leaves the camera stuck on
+    // "Checking your birds...".
+    scan: (file) => {
+      const form = new FormData()
+      form.append('file', file)
+      return apiFetch('/media/scan', { method: 'POST', body: form, signal: AbortSignal.timeout(45000) })
     },
   },
   team: {

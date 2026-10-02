@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # above share, so grok_service.transcribe() no-ops when grok_api_base_url
     # isn't Groq's.
     grok_transcribe_model: str = "whisper-large-v3-turbo"
+    # Photo review for the Flock Check "Use Camera"/"Upload Photo" buttons -
+    # also Groq-only (grok_model is text-only, so this needs its own
+    # multimodal model); grok_service.analyze_photo() no-ops elsewhere.
+    grok_vision_model: str = "qwen/qwen3.8-27b"
 
     # Rate limits, as slowapi/limits strings (e.g. "20/minute"). Kept
     # generous enough not to get in a real farmer's way during normal use
@@ -58,6 +62,8 @@ class Settings(BaseSettings):
     rate_limit_ask: str = "15/minute"
     rate_limit_media_upload: str = "30/minute"
     rate_limit_flock_check: str = "30/minute"
+    # AI camera "Scan Flock" - one vision call per tap, no storage.
+    rate_limit_flock_scan: str = "20/minute"
     # Deliberately tight - this endpoint is unauthenticated by nature (you
     # don't have a session yet when you've forgotten your password), so it's
     # also the easiest one for an attacker to hammer for email enumeration

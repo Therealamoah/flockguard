@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
@@ -6,6 +6,7 @@ import NumberStepper from '../components/NumberStepper'
 import StatusBadge from '../components/StatusBadge'
 import { statusMeta } from '../lib/risk'
 import { inspectionPriorities } from '../lib/riskFactors'
+import { ACTIVITY_LABELS, FEEDING_LABELS, WATER_LABELS } from '../lib/checkLabels'
 import {
   Camera,
   Upload,
@@ -27,9 +28,77 @@ import {
   Activity,
   Thermometer,
   StickyNote,
+  RefreshCw,
+  ScanLine,
+  X,
 } from 'lucide-react'
+import PhotoAnalysisResult from '../components/PhotoAnalysisResult'
+import ScanFlockCamera from '../components/ScanFlockCamera'
 
 const BASELINE_SAMPLE_SIZE = 14 // mirrors backend/app/risk_engine/engine.py
+
+// What the AI heard in a voice note and which form fields it filled in.
+function VoiceNoteFeedback({ audio }) {
+  if (!audio.transcript) {
+    return (
+      <p className="text-xs text-secondary">
+        Voice note attached ✓ - but the AI couldn't make out any words. Try again somewhere quieter.
+      </p>
+    )
+  }
+  return (
+    <div className="space-y-1 rounded-lg border border-hairline p-2 text-xs">
+      <p className="flex items-center gap-1 font-semibold text-navy">
+        <Mic size={14} /> AI heard your voice note
+      </p>
+      <p className="text-secondary">{audio.voice_fields?.heard || audio.transcript}</p>
+      {audio.filled.length ? (
+        <>
+          <p className="pt-1 font-medium text-normal">Filled in for you - please check:</p>
+          <div className="flex flex-wrap gap-1">
+            {audio.filled.map((item) => (
+              <span key={item} className="rounded-full bg-forest/10 px-2 py-0.5 text-forest">
+                {item}
+              </span>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="text-muted">Added to Notes below.</p>
+      )}
+    </div>
+  )
+}
+
+// AI review of an uploaded Flock Check photo (backend grok_service.analyze_photo).
+// photo_analysis is null when the vision model isn't available - fall back to
+// a plain "attached" note so the photo still feels saved.
+function PhotoFeedback({ photo, onRemove }) {
+  const analysis = photo.photo_analysis
+  const notPoultry = analysis && !analysis.is_poultry
+  return (
+    <div
+      className={[
+        'flex gap-3 rounded-lg border p-2',
+        notPoultry ? 'border-warning/50 bg-warning/5' : 'border-hairline',
+      ].join(' ')}
+    >
+      <img src={photo.url} alt="Uploaded flock" className="h-16 w-16 shrink-0 rounded object-cover" />
+      <div className="min-w-0 flex-1">
+        {analysis ? (
+          <PhotoAnalysisResult analysis={analysis} />
+        ) : (
+          <p className="text-xs text-secondary">
+            Photo attached ✓ - but the AI couldn't check it right now. Remove it and try again in a moment.
+          </p>
+        )}
+      </div>
+      <button type="button" onClick={onRemove} aria-label="Remove photo" className="self-start text-muted hover:text-critical">
+        <X size={16} />
+      </button>
+    </div>
+  )
+}
 
 function IconChip({ Icon }) {
   return (
@@ -54,12 +123,12 @@ function SectionCard({ icon: Icon, title, hint, children }) {
   )
 }
 
-const WATER_OPTIONS = ['normal', 'lower', 'higher']
-const ACTIVITY_OPTIONS = ['normal', 'reduced', 'lethargic']
-const FEEDING_OPTIONS = ['normal', 'reduced', 'none']
+const WATER_OPTIONS = Object.keys(WATER_LABELS)
+const ACTIVITY_OPTIONS = Object.keys(ACTIVITY_LABELS)
+const FEEDING_OPTIONS = Object.keys(FEEDING_LABELS)
 const ROUTINE_PERIODS = ['morning', 'evening']
 
-function ToggleRow({ label, options, value, onChange }) {
+function ToggleRow({ label, options, labels, value, onChange }) {
   return (
     <div>
       <label className="mb-1 block text-sm font-semibold text-navy">{label}</label>
@@ -70,13 +139,13 @@ function ToggleRow({ label, options, value, onChange }) {
             type="button"
             onClick={() => onChange(opt)}
             className={[
-              'flex-1 rounded-lg border px-3 py-2 text-sm font-medium capitalize transition-colors',
+              'flex-1 rounded-lg border px-2 py-2 text-sm font-medium transition-colors',
               value === opt
                 ? 'border-forest bg-forest/10 text-forest'
                 : 'border-hairline text-secondary hover:bg-forest/5',
             ].join(' ')}
           >
-            {opt}
+            {labels[opt]}
           </button>
         ))}
       </div>
@@ -90,11 +159,11 @@ function average(values) {
 }
 
 function baselineWindowLabel(sample) {
-  if (sample.length < 2) return 'recent'
+  if (sample.length < 2) return 'few checks'
   const newest = new Date(sample[0].recorded_at)
   const oldest = new Date(sample[sample.length - 1].recorded_at)
   const days = Math.max(1, Math.round((newest - oldest) / 86400000))
-  return `${days}-day`
+  return days === 1 ? 'day' : `${days} days`
 }
 
 function computeBaseline(priorChecks) {
@@ -107,7 +176,7 @@ function computeBaseline(priorChecks) {
 }
 
 function describeChanges(
-  { mortality, sickOrInjured, feedKg, waterLiters, activity, feedingBehaviour, crowding, unusualSound },
+  { mortality, sickOrInjured, feedKg, waterLiters, activity, feedingBehaviour, crowding, unusualSound, birdCount, previousBirdCount },
   priorChecks,
   houseName
 ) {
@@ -115,20 +184,31 @@ function describeChanges(
   const baseline = computeBaseline(priorChecks)
   const changes = []
 
+  // Bird count - now auto-calculated (previous count minus today's mortality)
+  // rather than farmer-entered, so it's worth surfacing as its own change.
+  if (birdCount != null) {
+    changes.push({
+      Icon: Users,
+      headline:
+        previousBirdCount != null ? `Bird count now ${birdCount} (was ${previousBirdCount})` : `Bird count now ${birdCount}`,
+      detail: 'Worked out from the dead birds you entered today.',
+    })
+  }
+
   // Mortality
   let headline
   if (prior) {
-    if (mortality > prior.mortality) headline = `Mortality up from ${prior.mortality} to ${mortality}`
-    else if (mortality < prior.mortality) headline = `Mortality down from ${prior.mortality} to ${mortality}`
-    else headline = `Mortality unchanged at ${mortality}`
+    if (mortality > prior.mortality) headline = `More dead birds: ${mortality} (was ${prior.mortality})`
+    else if (mortality < prior.mortality) headline = `Fewer dead birds: ${mortality} (was ${prior.mortality})`
+    else headline = `Same number of dead birds: ${mortality}`
   } else {
-    headline = `Mortality recorded at ${mortality} (first check for this house)`
+    headline = `Dead birds: ${mortality} (first check for this house)`
   }
-  let detail = 'No baseline yet for this house.'
+  let detail = 'Not enough past checks yet to compare.'
   if (baseline.avgMortality != null) {
     const ratio = baseline.avgMortality > 0 ? mortality / baseline.avgMortality : mortality > 0 ? Infinity : 1
-    const qualifier = ratio <= 1.1 ? 'In line with' : ratio < 1.5 ? 'Slightly above' : ratio < 2.5 ? 'Above' : 'Well above'
-    detail = `${qualifier} ${houseName || 'this house'}'s ${baseline.windowLabel} average.`
+    const qualifier = ratio <= 1.1 ? 'About normal for' : ratio < 1.5 ? 'A little more than usual for' : ratio < 2.5 ? 'More than usual for' : 'Much more than usual for'
+    detail = `${qualifier} ${houseName || 'this house'} over the last ${baseline.windowLabel}.`
   }
   changes.push({ Icon: LineChart, headline, detail })
 
@@ -140,13 +220,13 @@ function describeChanges(
       const diff = feedKg - baseline.avgFeed
       feedHeadline =
         Math.abs(diff) < baseline.avgFeed * 0.03
-          ? 'Feed intake steady'
+          ? 'Eating the usual amount of feed'
           : diff < 0
-            ? 'Feed intake trending down'
-            : 'Feed intake trending up'
-      feedDetail = `${feedKg}kg logged today vs. ~${Math.round(baseline.avgFeed)}kg average.`
+            ? 'Eating less feed than usual'
+            : 'Eating more feed than usual'
+      feedDetail = `${feedKg}kg today - usually about ${Math.round(baseline.avgFeed)}kg.`
     } else {
-      feedHeadline = 'Feed intake logged'
+      feedHeadline = 'Feed recorded'
       feedDetail = `${feedKg}kg (first reading for this house).`
     }
     changes.push({ Icon: Wheat, headline: feedHeadline, detail: feedDetail })
@@ -158,24 +238,24 @@ function describeChanges(
     if (diff !== 0) {
       changes.push({
         Icon: Droplets,
-        headline: `Water intake ${diff > 0 ? 'up' : 'down'} from ${prior.water_liters}L to ${waterLiters}L`,
-        detail: 'Compared with the most recent check.',
+        headline: `Drinking ${diff > 0 ? 'more' : 'less'} water: ${waterLiters}L (was ${prior.water_liters}L)`,
+        detail: 'Compared with your last check.',
       })
     }
   }
 
   // Behaviour
   const behaviourFlags = []
-  if (activity !== 'normal') behaviourFlags.push(`activity ${activity}`)
-  if (feedingBehaviour !== 'normal') behaviourFlags.push(`feeding ${feedingBehaviour}`)
-  if (crowding) behaviourFlags.push('crowding observed')
-  if (unusualSound) behaviourFlags.push('unusual noise observed')
-  if (sickOrInjured > 0) behaviourFlags.push(`${sickOrInjured} sick/injured`)
+  if (activity !== 'normal') behaviourFlags.push(ACTIVITY_LABELS[activity].toLowerCase())
+  if (feedingBehaviour !== 'normal') behaviourFlags.push(FEEDING_LABELS[feedingBehaviour].toLowerCase())
+  if (crowding) behaviourFlags.push('huddling together')
+  if (unusualSound) behaviourFlags.push('coughing or strange sounds')
+  if (sickOrInjured > 0) behaviourFlags.push(`${sickOrInjured} sick or hurt`)
 
   changes.push({
     Icon: ClipboardList,
-    headline: behaviourFlags.length > 0 ? `Behaviour flagged: ${behaviourFlags.join(', ')}` : 'Behaviour flagged: normal',
-    detail: 'Recorded during this check.',
+    headline: behaviourFlags.length > 0 ? `Watch out: ${behaviourFlags.join(', ')}` : 'Birds look normal',
+    detail: 'From what you saw during this check.',
   })
 
   return changes
@@ -187,7 +267,13 @@ export default function FlockCheckPage() {
   const house = houses.find((h) => h.id === currentHouseId)
 
   const [period, setPeriod] = useState(() => (new Date().getHours() < 15 ? 'morning' : 'evening'))
-  const [birdCount, setBirdCount] = useState('')
+  const [activeFlock, setActiveFlock] = useState(null)
+  const [currentCount, setCurrentCount] = useState(null)
+  const [isLoadingFlock, setIsLoadingFlock] = useState(true)
+  const [showReconcile, setShowReconcile] = useState(false)
+  const [reconcileValue, setReconcileValue] = useState('')
+  const [reconcileReason, setReconcileReason] = useState('')
+  const [isReconciling, setIsReconciling] = useState(false)
   const [mortality, setMortality] = useState(0)
   const [sickOrInjured, setSickOrInjured] = useState(0)
   const [feedKg, setFeedKg] = useState('')
@@ -203,6 +289,7 @@ export default function FlockCheckPage() {
 
   const [photo, setPhoto] = useState(null)
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const [isScanOpen, setIsScanOpen] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessingAudio, setIsProcessingAudio] = useState(false)
   const [audio, setAudio] = useState(null)
@@ -215,8 +302,56 @@ export default function FlockCheckPage() {
   const [explanation, setExplanation] = useState('')
   const [explanationLoading, setExplanationLoading] = useState(false)
 
+  useEffect(() => {
+    if (!currentFarmId || !currentHouseId) return
+    let cancelled = false
+    Promise.all([api.flocks.list(currentFarmId, currentHouseId), api.flockChecks.list(currentFarmId, currentHouseId)])
+      .then(([flocks, checks]) => {
+        if (cancelled) return
+        const flock = flocks.find((f) => f.status === 'active') || null
+        setActiveFlock(flock)
+        setCurrentCount(flock ? (flock.current_bird_count ?? checks[0]?.bird_count ?? flock.initial_bird_count ?? 0) : null)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingFlock(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentFarmId, currentHouseId])
+
+  function openReconcile() {
+    setReconcileValue(currentCount != null ? String(currentCount) : '')
+    setReconcileReason('')
+    setShowReconcile(true)
+  }
+
+  async function handleReconcile() {
+    if (!activeFlock) return
+    const value = Number(reconcileValue)
+    if (!Number.isFinite(value) || reconcileValue === '' || value < 0) {
+      setError('Enter a valid bird count.')
+      return
+    }
+    setIsReconciling(true)
+    try {
+      await api.flocks.reconcileCount(currentFarmId, currentHouseId, activeFlock.id, {
+        current_bird_count: value,
+        reason: reconcileReason || null,
+      })
+      setCurrentCount(value)
+      setShowReconcile(false)
+    } catch {
+      setError('Could not update the bird count. Please try again.')
+    } finally {
+      setIsReconciling(false)
+    }
+  }
+
   async function handlePhotoChange(e) {
     const file = e.target.files?.[0]
+    // Reset so picking the same file again (e.g. after removing it) still fires onChange.
+    e.target.value = ''
     if (!file) return
     setIsUploadingPhoto(true)
     try {
@@ -227,6 +362,66 @@ export default function FlockCheckPage() {
     } finally {
       setIsUploadingPhoto(false)
     }
+  }
+
+  // Scan Flock already reviewed this frame - upload it without a second AI
+  // call and keep the scan's analysis. Throws so the camera can show the error.
+  async function attachScannedFrame(file, analysis) {
+    const uploaded = await api.media.upload(file, 'image', { analyze: false })
+    setPhoto({ ...uploaded, photo_analysis: analysis })
+  }
+
+  // Fills the form from what the farmer said (backend extract_check_fields
+  // only returns fields they actually mentioned). Returns plain-language
+  // labels of what changed so the farmer can review before submitting.
+  function applyVoiceFields(fields) {
+    if (!fields) return []
+    const filled = []
+    if (fields.mortality != null) {
+      setMortality(fields.mortality)
+      filled.push(`Dead birds: ${fields.mortality}`)
+    }
+    if (fields.sick_or_injured != null) {
+      setSickOrInjured(fields.sick_or_injured)
+      filled.push(`Sick or hurt: ${fields.sick_or_injured}`)
+    }
+    if (fields.feed_kg != null) {
+      setFeedKg(String(fields.feed_kg))
+      filled.push(`Feed: ${fields.feed_kg} kg`)
+    }
+    if (fields.water_level) {
+      setWaterLevel(fields.water_level)
+      filled.push(`Water: ${WATER_LABELS[fields.water_level].toLowerCase()}`)
+    }
+    if (fields.water_liters != null) {
+      setWaterLiters(String(fields.water_liters))
+      filled.push(`Water: ${fields.water_liters} L`)
+    }
+    if (fields.activity) {
+      setActivity(fields.activity)
+      filled.push(`Birds: ${ACTIVITY_LABELS[fields.activity].toLowerCase()}`)
+    }
+    if (fields.feeding_behaviour) {
+      setFeedingBehaviour(fields.feeding_behaviour)
+      filled.push(FEEDING_LABELS[fields.feeding_behaviour])
+    }
+    if (fields.crowding_observed != null) {
+      setCrowding(fields.crowding_observed)
+      filled.push(`Huddling: ${fields.crowding_observed ? 'yes' : 'no'}`)
+    }
+    if (fields.unusual_sound_observed != null) {
+      setUnusualSound(fields.unusual_sound_observed)
+      filled.push(`Coughing / strange sounds: ${fields.unusual_sound_observed ? 'yes' : 'no'}`)
+    }
+    if (fields.temperature_c != null) {
+      setTemperature(String(fields.temperature_c))
+      filled.push(`Temperature: ${fields.temperature_c}°C`)
+    }
+    if (fields.humidity_pct != null) {
+      setHumidity(String(fields.humidity_pct))
+      filled.push(`Humidity: ${fields.humidity_pct}%`)
+    }
+    return filled
   }
 
   async function toggleRecording() {
@@ -247,10 +442,10 @@ export default function FlockCheckPage() {
         setIsProcessingAudio(true)
         try {
           const uploaded = await api.media.upload(file, 'video')
-          setAudio(uploaded)
           if (uploaded.transcript) {
             setNotes((prev) => (prev.trim() ? `${prev.trim()}\n\n🎤 ${uploaded.transcript}` : uploaded.transcript))
           }
+          setAudio({ ...uploaded, filled: applyVoiceFields(uploaded.voice_fields) })
         } catch {
           setError('Audio upload failed. You can still submit without it.')
         } finally {
@@ -275,11 +470,11 @@ export default function FlockCheckPage() {
       setExplanation(
         available
           ? text
-          : "FlockGuard AI explanations are temporarily unavailable. Your farm monitoring and risk calculations are still working."
+          : "The AI can't explain this right now. Your checks and risk numbers still work as normal."
       )
     } catch {
       setExplanation(
-        "FlockGuard AI explanations are temporarily unavailable. Your farm monitoring and risk calculations are still working."
+        "The AI can't explain this right now. Your checks and risk numbers still work as normal."
       )
     } finally {
       setExplanationLoading(false)
@@ -294,20 +489,19 @@ export default function FlockCheckPage() {
       setError('No house selected.')
       return
     }
+    if (!activeFlock) {
+      setError('Place an active flock in this house before logging a Flock Check.')
+      return
+    }
     // Basic client-side validation to avoid sending invalid payloads
-    const birdCountNum = Number(birdCount)
     const mortalityNum = Number(mortality)
 
-    if (!Number.isFinite(birdCountNum) || birdCount === '' || birdCountNum <= 0) {
-      setError('Please enter a valid bird count (positive integer).')
-      return
-    }
     if (!Number.isFinite(mortalityNum) || mortalityNum < 0) {
-      setError('Please enter a valid mortality (0 or positive integer).')
+      setError('Enter the number of dead birds (0 or more).')
       return
     }
-    if (mortalityNum > birdCountNum) {
-      setError('Mortality cannot exceed bird count.')
+    if (currentCount != null && mortalityNum > currentCount) {
+      setError('Dead birds cannot be more than the birds in the house.')
       return
     }
 
@@ -317,7 +511,6 @@ export default function FlockCheckPage() {
 
       const response = await api.flockChecks.submit(currentFarmId, currentHouseId, {
         period,
-        bird_count: birdCountNum,
         mortality: mortalityNum,
         sick_or_injured: Number(sickOrInjured),
         feed_kg: feedKg === '' ? null : Number(feedKg),
@@ -336,6 +529,7 @@ export default function FlockCheckPage() {
         audio_public_id: audio?.public_id ?? null,
       })
       setResult(response)
+      setCurrentCount(response.bird_count)
       setPriorChecks(fetchedPriorChecks)
 
       if (response.risk_status !== 'normal') {
@@ -351,7 +545,18 @@ export default function FlockCheckPage() {
   if (result) {
     const meta = statusMeta(result.risk_status)
     const changes = describeChanges(
-      { mortality, sickOrInjured, feedKg, waterLiters, activity, feedingBehaviour, crowding, unusualSound },
+      {
+        mortality,
+        sickOrInjured,
+        feedKg,
+        waterLiters,
+        activity,
+        feedingBehaviour,
+        crowding,
+        unusualSound,
+        birdCount: result.bird_count,
+        previousBirdCount: priorChecks[0]?.bird_count ?? null,
+      },
       priorChecks,
       house?.name
     )
@@ -361,7 +566,7 @@ export default function FlockCheckPage() {
       <div className="mx-auto max-w-2xl p-6">
         <div className="overflow-hidden rounded-xl border border-hairline bg-surface shadow-sm">
           <div className="p-6 text-center" style={{ backgroundColor: `${meta.color}14` }}>
-            <p className="text-xs font-bold uppercase tracking-wide text-secondary">Flock Check complete</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-secondary">Check saved</p>
             <div
               className="relative mx-auto mt-3 flex h-24 w-24 items-center justify-center rounded-full"
               style={{ background: `conic-gradient(${meta.color} ${result.risk_score * 3.6}deg, #E4E1D8 0deg)` }}
@@ -414,15 +619,15 @@ export default function FlockCheckPage() {
               </div>
             </div>
             <ul className="mt-4 space-y-1.5 text-sm text-secondary">
-              <li>Mortality change: {result.morning_comparison.mortality_change > 0 ? '+' : ''}{result.morning_comparison.mortality_change}</li>
+              <li>Dead birds change: {result.morning_comparison.mortality_change > 0 ? '+' : ''}{result.morning_comparison.mortality_change}</li>
               {result.morning_comparison.feed_change != null ? (
                 <li>
                   Feed change: {result.morning_comparison.feed_change > 0 ? '+' : ''}
                   {result.morning_comparison.feed_change}kg
                 </li>
               ) : null}
-              {result.morning_comparison.water_changed ? <li>Water level changed since morning</li> : null}
-              {result.morning_comparison.activity_changed ? <li>Activity level changed since morning</li> : null}
+              {result.morning_comparison.water_changed ? <li>Water drinking changed since morning</li> : null}
+              {result.morning_comparison.activity_changed ? <li>How active the birds are changed since morning</li> : null}
             </ul>
           </div>
         ) : null}
@@ -453,13 +658,13 @@ export default function FlockCheckPage() {
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-ai/10 text-ai">
                 <Sparkles size={14} />
               </span>
-              <h2 className="text-sm font-bold text-navy">Why FlockGuard flagged it</h2>
+              <h2 className="text-sm font-bold text-navy">Why FlockGuard is worried</h2>
             </div>
             <p className="mt-3 flex items-center gap-2 text-sm text-secondary">
               {explanationLoading ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  Generating explanation...
+                  Explaining...
                 </>
               ) : (
                 explanation || null
@@ -474,7 +679,7 @@ export default function FlockCheckPage() {
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-forest/10 text-forest">
                 <Stethoscope size={14} />
               </span>
-              <h2 className="text-sm font-bold text-navy">Recommended inspection priorities</h2>
+              <h2 className="text-sm font-bold text-navy">What to check first</h2>
             </div>
             <ol className="mt-4 space-y-3">
               {priorities.map((p, i) => (
@@ -498,7 +703,7 @@ export default function FlockCheckPage() {
             className="flex items-center gap-1.5 rounded-lg border border-hairline px-5 py-2.5 text-sm font-bold text-navy hover:bg-forest/5"
           >
             <Building2 size={15} />
-            View House
+            See house
           </button>
           <button
             onClick={() => navigate('/ask')}
@@ -512,12 +717,38 @@ export default function FlockCheckPage() {
             className="flex items-center gap-1.5 rounded-lg bg-forest px-5 py-2.5 text-sm font-bold text-white hover:bg-forest-dark"
           >
             <Stethoscope size={15} />
-            Record Inspection
+            Record what you found
           </button>
         </div>
       </div>
     )
   }
+
+  if (currentHouseId && isLoadingFlock) {
+    return (
+      <div className="flex items-center justify-center gap-2 p-6 text-sm text-secondary">
+        <Loader2 size={16} className="animate-spin" />
+        Loading house data...
+      </div>
+    )
+  }
+
+  if (currentHouseId && !activeFlock) {
+    return (
+      <div className="mx-auto max-w-xl p-6">
+        <div className="rounded-xl border border-hairline bg-surface p-6 text-center shadow-sm">
+          <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-forest/10 text-forest">
+            <Warehouse size={20} />
+          </span>
+          <p className="mt-3 text-sm font-bold text-navy">No active flock in this house</p>
+          <p className="mt-1 text-sm text-secondary">Place a flock before logging a Flock Check.</p>
+        </div>
+      </div>
+    )
+  }
+
+  const mortalityPreviewNum = Number(mortality) || 0
+  const projectedCount = currentCount != null ? Math.max(0, currentCount - mortalityPreviewNum) : null
 
   return (
     <div className="mx-auto max-w-xl p-6">
@@ -593,25 +824,91 @@ export default function FlockCheckPage() {
 
       <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
         <SectionCard icon={Users} title="Birds">
-          <NumberStepper
-            label="Current bird count"
-            value={birdCount}
-            onChange={setBirdCount}
-            placeholder={house?.bird_capacity ? String(house.bird_capacity) : '—'}
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-navy">Birds in this house now</label>
+            <div className="rounded-lg border border-hairline bg-hairline/20 px-3 py-2 text-center text-sm font-bold text-navy">
+              {currentCount ?? '—'}
+            </div>
+            {mortalityPreviewNum > 0 && projectedCount != null ? (
+              <p className="mt-1 text-xs text-secondary">→ {projectedCount} after today's dead birds</p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => (showReconcile ? setShowReconcile(false) : openReconcile())}
+              className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-forest hover:underline"
+            >
+              <RefreshCw size={12} />
+              You counted a different number? Fix it here
+            </button>
+            {showReconcile ? (
+              <div className="mt-2 space-y-2 rounded-lg border border-hairline p-3">
+                <input
+                  type="number"
+                  min="0"
+                  value={reconcileValue}
+                  onChange={(e) => setReconcileValue(e.target.value)}
+                  placeholder="How many birds you counted"
+                  className="w-full rounded-lg border border-hairline px-3 py-2 text-sm outline-none focus:border-forest"
+                />
+                <input
+                  type="text"
+                  value={reconcileReason}
+                  onChange={(e) => setReconcileReason(e.target.value)}
+                  placeholder="Why is it different? (optional)"
+                  className="w-full rounded-lg border border-hairline px-3 py-2 text-sm outline-none focus:border-forest"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={isReconciling}
+                    onClick={handleReconcile}
+                    className="flex-1 rounded-lg bg-forest px-3 py-2 text-xs font-bold text-white hover:bg-forest-dark disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isReconciling ? 'Saving...' : 'Save count'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowReconcile(false)}
+                    className="rounded-lg border border-hairline px-3 py-2 text-xs font-bold text-navy hover:bg-forest/5"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <NumberStepper label="Dead birds today" value={mortality} onChange={setMortality} />
+          <NumberStepper label="Sick or hurt birds" value={sickOrInjured} onChange={setSickOrInjured} />
+        </SectionCard>
+
+        <SectionCard icon={Droplets} title="Feed & Water">
+          <NumberStepper label="Feed eaten today (kg)" value={feedKg} onChange={setFeedKg} step={0.5} />
+          <ToggleRow
+            label="How much water did they drink?"
+            options={WATER_OPTIONS}
+            labels={WATER_LABELS}
+            value={waterLevel}
+            onChange={setWaterLevel}
           />
-          <NumberStepper label="Mortality today" value={mortality} onChange={setMortality} />
-          <NumberStepper label="Sick / injured birds observed" value={sickOrInjured} onChange={setSickOrInjured} />
+          <NumberStepper label="Water drunk today (litres) - if you measured it" value={waterLiters} onChange={setWaterLiters} step={5} />
         </SectionCard>
 
-        <SectionCard icon={Droplets} title="Consumption">
-          <NumberStepper label="Feed consumed today (kg)" value={feedKg} onChange={setFeedKg} step={0.5} />
-          <ToggleRow label="Water level" options={WATER_OPTIONS} value={waterLevel} onChange={setWaterLevel} />
-          <NumberStepper label="Water consumed today (L) - optional" value={waterLiters} onChange={setWaterLiters} step={5} />
-        </SectionCard>
-
-        <SectionCard icon={Activity} title="Behaviour">
-          <ToggleRow label="Activity" options={ACTIVITY_OPTIONS} value={activity} onChange={setActivity} />
-          <ToggleRow label="Feeding behaviour" options={FEEDING_OPTIONS} value={feedingBehaviour} onChange={setFeedingBehaviour} />
+        <SectionCard icon={Activity} title="How the birds look">
+          <ToggleRow
+            label="Are the birds moving around?"
+            options={ACTIVITY_OPTIONS}
+            labels={ACTIVITY_LABELS}
+            value={activity}
+            onChange={setActivity}
+          />
+          <ToggleRow
+            label="Are they eating?"
+            options={FEEDING_OPTIONS}
+            labels={FEEDING_LABELS}
+            value={feedingBehaviour}
+            onChange={setFeedingBehaviour}
+          />
+          <p className="text-sm font-semibold text-navy">Did you see or hear any of these?</p>
           <div className="flex gap-2">
             <button
               type="button"
@@ -621,7 +918,7 @@ export default function FlockCheckPage() {
                 crowding ? 'border-forest bg-forest/10 text-forest' : 'border-hairline text-secondary',
               ].join(' ')}
             >
-              Crowding observed
+              Huddling together
             </button>
             <button
               type="button"
@@ -631,12 +928,16 @@ export default function FlockCheckPage() {
                 unusualSound ? 'border-forest bg-forest/10 text-forest' : 'border-hairline text-secondary',
               ].join(' ')}
             >
-              Unusual noise
+              Coughing / strange sounds
             </button>
           </div>
         </SectionCard>
 
-        <SectionCard icon={Thermometer} title="Environment (optional)" hint="Enter these only if reliable readings are available.">
+        <SectionCard
+          icon={Thermometer}
+          title="House temperature (optional)"
+          hint="Only fill this in if you have a thermometer in the house."
+        >
           <div className="grid grid-cols-2 gap-3">
             <input
               type="number"
@@ -655,13 +956,17 @@ export default function FlockCheckPage() {
           </div>
         </SectionCard>
 
-        <SectionCard icon={Camera} title="Media">
+        <SectionCard icon={Camera} title="Photos & Voice">
+          {isScanOpen ? <ScanFlockCamera onClose={() => setIsScanOpen(false)} onAttach={attachScannedFrame} /> : null}
           <div className="grid grid-cols-3 gap-2">
-            <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border border-hairline py-3 text-xs font-medium text-navy hover:bg-forest/5">
-              <Camera size={20} />
-              Use Camera
-              <input type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} className="hidden" />
-            </label>
+            <button
+              type="button"
+              onClick={() => setIsScanOpen(true)}
+              className="flex flex-col items-center gap-1 rounded-lg border border-forest bg-forest py-3 text-xs font-semibold text-white hover:opacity-90"
+            >
+              <ScanLine size={20} />
+              AI Camera
+            </button>
             <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border border-hairline py-3 text-xs font-medium text-navy hover:bg-forest/5">
               <Upload size={20} />
               Upload Photo
@@ -681,23 +986,28 @@ export default function FlockCheckPage() {
             </button>
           </div>
           <p className="text-[11px] text-muted">
-            Speak your observations aloud - it's transcribed straight into Notes below.
+            Point the AI Camera at your birds or upload a photo for instant feedback. Or just say your check out loud -
+            the AI fills in the form for you.
           </p>
-          {isUploadingPhoto ? <p className="text-xs text-secondary">Uploading photo...</p> : null}
-          {photo ? <p className="text-xs text-normal">Photo attached ✓</p> : null}
-          {isProcessingAudio ? <p className="text-xs text-secondary">Transcribing voice note...</p> : null}
-          {audio ? (
-            <p className="text-xs text-normal">
-              Audio attached ✓{audio.transcript ? ' — transcribed into Notes' : ''}
+          {isUploadingPhoto ? (
+            <p className="flex items-center gap-1 text-xs text-secondary">
+              <Loader2 size={12} className="animate-spin" /> AI is checking your photo...
             </p>
           ) : null}
+          {photo ? <PhotoFeedback photo={photo} onRemove={() => setPhoto(null)} /> : null}
+          {isProcessingAudio ? (
+            <p className="flex items-center gap-1 text-xs text-secondary">
+              <Loader2 size={12} className="animate-spin" /> AI is listening to your voice note...
+            </p>
+          ) : null}
+          {audio ? <VoiceNoteFeedback audio={audio} /> : null}
         </SectionCard>
 
         <SectionCard icon={StickyNote} title="Notes">
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g. Slightly reduced feeding near the east wall, otherwise normal..."
+            placeholder="e.g. Birds near the east wall are eating less, the rest look fine..."
             rows={3}
             className="w-full rounded-lg border border-hairline px-3 py-2 text-sm outline-none focus:border-forest"
           />
@@ -707,7 +1017,7 @@ export default function FlockCheckPage() {
 
         <button
           type="submit"
-          disabled={isSubmitting || birdCount === ''}
+          disabled={isSubmitting || currentCount == null}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-forest py-3 text-sm font-bold text-white hover:bg-forest-dark disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? (
@@ -722,9 +1032,6 @@ export default function FlockCheckPage() {
             </>
           )}
         </button>
-        {!isSubmitting && birdCount === '' ? (
-          <p className="text-center text-xs text-muted">Enter the current bird count above to analyze this check.</p>
-        ) : null}
       </form>
     </div>
   )

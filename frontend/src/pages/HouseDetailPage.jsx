@@ -39,12 +39,12 @@ const PERIOD_ICON = { morning: Sun, evening: Moon, emergency: Siren }
 const PRIORITY_COLOR = { low: '#2F9E58', medium: '#B3811A', high: '#C05A1D', urgent: '#C8433A' }
 
 const FINDING_CATEGORIES = [
-  { value: 'everything_normal', label: 'Everything normal' },
-  { value: 'water_issue', label: 'Water problem' },
-  { value: 'feed_issue', label: 'Feed problem' },
-  { value: 'ventilation_issue', label: 'Ventilation problem' },
-  { value: 'sick_birds_observed', label: 'Sick birds observed' },
-  { value: 'behaviour_issue', label: 'Behaviour problem' },
+  { value: 'everything_normal', label: 'All fine' },
+  { value: 'water_issue', label: 'Water / drinker problem' },
+  { value: 'feed_issue', label: 'Feed / feeder problem' },
+  { value: 'ventilation_issue', label: 'Too hot / no fresh air' },
+  { value: 'sick_birds_observed', label: 'Sick birds found' },
+  { value: 'behaviour_issue', label: 'Birds acting strange' },
   { value: 'other', label: 'Other' },
 ]
 
@@ -140,11 +140,11 @@ export default function HouseDetailPage() {
       setExplanation(
         available
           ? text
-          : "FlockGuard AI explanations are temporarily unavailable. Your farm monitoring and risk calculations are still working."
+          : "The AI can't explain this right now. Your checks and risk numbers still work as normal."
       )
     } catch {
       setExplanation(
-        "FlockGuard AI explanations are temporarily unavailable. Your farm monitoring and risk calculations are still working."
+        "The AI can't explain this right now. Your checks and risk numbers still work as normal."
       )
     } finally {
       setExplanationLoading(false)
@@ -155,7 +155,7 @@ export default function HouseDetailPage() {
     return (
       <div className="flex items-center justify-center gap-2 p-6 text-sm text-secondary">
         <Loader2 size={16} className="animate-spin" />
-        Loading house data...
+        Getting house details...
       </div>
     )
   }
@@ -182,7 +182,7 @@ export default function HouseDetailPage() {
               {latest ? <StatusBadge status={latest.risk_status} /> : null}
             </div>
             <p className="mt-1 text-sm capitalize text-secondary">
-              {flock ? `${flock.bird_type || ''} Flock · ${flock.breed}`.trim() : 'No active flock'}
+              {flock ? `${flock.bird_type || ''} Flock · ${flock.breed}`.trim() : 'No birds in this house yet'}
             </p>
           </div>
         </div>
@@ -202,11 +202,11 @@ export default function HouseDetailPage() {
               </div>
             </div>
             <div>
-              <p className="text-xs text-muted">Risk score / 100</p>
+              <p className="text-xs text-muted">Risk (out of 100)</p>
               {riskDelta != null ? (
                 <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: riskTrendColor }}>
                   <RiskTrendIcon size={12} />
-                  {Math.abs(riskDelta)} vs previous
+                  {Math.abs(riskDelta)} {riskDelta > 0 ? 'higher' : 'lower'} than last check
                 </span>
               ) : null}
             </div>
@@ -215,19 +215,19 @@ export default function HouseDetailPage() {
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <StatCard label="Current Flock" value={flock ? flock.breed : '—'} Icon={ClipboardList} iconColor="#1B4332" />
+        <StatCard label="Breed" value={flock ? flock.breed : '—'} Icon={ClipboardList} iconColor="#1B4332" />
         <StatCard
-          label="Bird Count"
+          label="Birds"
           value={latest?.bird_count ?? flock?.initial_bird_count ?? '—'}
           Icon={Users}
           iconColor="#1B4332"
         />
-        <StatCard label="Bird Age" value={flock ? dayLabel(flock.start_date) : '—'} Icon={Clock3} iconColor="#1B4332" />
-        <StatCard label="Last Check" value={latest ? timeAgo(latest.recorded_at) : '—'} Icon={Activity} iconColor="#1B4332" />
+        <StatCard label="Age" value={flock ? dayLabel(flock.start_date) : '—'} Icon={Clock3} iconColor="#1B4332" />
+        <StatCard label="Last check" value={latest ? timeAgo(latest.recorded_at) : '—'} Icon={Activity} iconColor="#1B4332" />
         <StatCard
-          label="Previous Risk"
+          label="Risk last time"
           value={previousScore ?? '—'}
-          caption={riskDelta != null ? (riskDelta > 0 ? 'Worsening' : riskDelta < 0 ? 'Improving' : 'Unchanged') : null}
+          caption={riskDelta != null ? (riskDelta > 0 ? 'Getting worse' : riskDelta < 0 ? 'Getting better' : 'No change') : null}
           captionColor={riskTrendColor}
           Icon={RiskTrendIcon}
           iconColor={riskTrendColor}
@@ -238,7 +238,7 @@ export default function HouseDetailPage() {
         <div className="mt-6 rounded-xl border border-watch/30 bg-watch/5 p-4">
           <div className="flex items-center gap-2 text-sm font-bold text-navy">
             <TrendUpIcon size={15} className="text-watch" />
-            Proactive insight
+            Something to watch
           </div>
           <ul className="mt-2 space-y-1 text-sm text-secondary">
             {insights.map((insight) => (
@@ -253,7 +253,7 @@ export default function HouseDetailPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-sm font-bold text-navy">
               <Sparkles size={15} className="text-ai" />
-              FlockGuard Intelligence — Why this needs attention
+              FlockGuard: why this house needs a look
             </div>
             <span
               className="rounded-full px-2.5 py-1 text-xs font-bold uppercase"
@@ -262,14 +262,14 @@ export default function HouseDetailPage() {
                 backgroundColor: `${PRIORITY_COLOR[rec.priority]}1A`,
               }}
             >
-              {rec.priority} priority
+              {rec.priority}
             </span>
           </div>
           <p className="mt-3 text-sm text-navy">{rec.summary}</p>
 
           {rec.observed_data?.length > 0 ? (
             <div className="mt-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted">Observed Farm Data</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">What your records show</p>
               <ul className="mt-1 list-inside list-disc text-sm text-secondary">
                 {rec.observed_data.map((line, i) => (
                   <li key={i}>{line}</li>
@@ -280,7 +280,7 @@ export default function HouseDetailPage() {
 
           {rec.calculated_signals?.length > 0 ? (
             <div className="mt-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted">Calculated Signals</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">What FlockGuard noticed</p>
               <ul className="mt-1 list-inside list-disc text-sm text-secondary">
                 {rec.calculated_signals.map((line, i) => (
                   <li key={i}>{line}</li>
@@ -291,7 +291,7 @@ export default function HouseDetailPage() {
 
           {rec.historical_context?.length > 0 ? (
             <div className="mt-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted">Previous Similar Incident</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">This happened before</p>
               <ul className="mt-1 list-inside list-disc text-sm text-secondary">
                 {rec.historical_context.map((line, i) => (
                   <li key={i}>{line}</li>
@@ -302,7 +302,7 @@ export default function HouseDetailPage() {
 
           {rec.knowledge_sources?.length > 0 ? (
             <div className="mt-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted">Relevant Guidance</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">Where this advice comes from</p>
               <ul className="mt-1 space-y-1 text-sm text-secondary">
                 {rec.knowledge_sources.map((src, i) => (
                   <li key={i}>
@@ -318,7 +318,7 @@ export default function HouseDetailPage() {
 
           {rec.recommended_actions?.length > 0 ? (
             <div className="mt-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted">Recommended Inspection</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">What to do</p>
               <ol className="mt-1 list-inside list-decimal text-sm text-secondary">
                 {rec.recommended_actions.map((line, i) => (
                   <li key={i}>{line}</li>
@@ -328,7 +328,7 @@ export default function HouseDetailPage() {
           ) : null}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-hairline pt-3">
-            <span className="text-xs text-muted">AI Evidence Confidence: {rec.confidence}</span>
+            <span className="text-xs text-muted">How sure FlockGuard is: {rec.confidence}</span>
             <div className="flex gap-2">
               <button
                 onClick={() => {
@@ -346,7 +346,7 @@ export default function HouseDetailPage() {
                 }}
                 className="rounded-lg bg-forest px-3 py-1.5 text-xs font-semibold text-white hover:bg-forest-dark"
               >
-                Mark handled
+                Done
               </button>
             </div>
           </div>
@@ -355,9 +355,9 @@ export default function HouseDetailPage() {
 
       {!latest ? (
         <p className="mt-6 text-sm text-secondary">
-          No Flock Checks recorded yet.{' '}
+          No checks done yet.{' '}
           <button onClick={handlePerformCheck} className="font-semibold text-forest">
-            Record the first one
+            Do the first one
           </button>
           .
         </p>
@@ -371,7 +371,7 @@ export default function HouseDetailPage() {
                     <Stethoscope size={14} />
                   </span>
                   <h2 className="text-sm font-bold text-navy">
-                    {latest.risk_factors.length > 0 ? 'Why this house is flagged' : 'Latest check summary'}
+                    {latest.risk_factors.length > 0 ? 'Why this house needs a look' : 'Last check'}
                   </h2>
                 </div>
                 {latest.risk_status !== 'normal' ? (
@@ -398,7 +398,7 @@ export default function HouseDetailPage() {
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-forest/10 text-forest">
                   <ClipboardCheck size={14} />
                 </span>
-                <h2 className="text-sm font-bold text-navy">Recommended actions</h2>
+                <h2 className="text-sm font-bold text-navy">What to do next</h2>
               </div>
               <div className="mt-4 space-y-2">
                 <button
@@ -406,7 +406,7 @@ export default function HouseDetailPage() {
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-forest py-2.5 text-sm font-bold text-white hover:bg-forest-dark"
                 >
                   <ClipboardList size={15} />
-                  Perform Flock Check
+                  Do a check now
                 </button>
                 <button
                   onClick={() => navigate('/ask')}
@@ -420,12 +420,12 @@ export default function HouseDetailPage() {
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-hairline py-2.5 text-sm font-bold text-navy hover:bg-forest/5"
                 >
                   <Stethoscope size={15} />
-                  Record Inspection
+                  Record what you found
                 </button>
               </div>
 
               {inspectionDone ? (
-                <p className="mt-3 text-sm text-normal">Inspection recorded ✓</p>
+                <p className="mt-3 text-sm text-normal">Saved ✓</p>
               ) : null}
 
               {showInspection ? (
@@ -452,14 +452,14 @@ export default function HouseDetailPage() {
                     required
                     value={findings}
                     onChange={(e) => setFindings(e.target.value)}
-                    placeholder="What did you find during inspection?"
+                    placeholder="What did you see when you checked the birds?"
                     rows={3}
                     className="w-full rounded-lg border border-hairline px-3 py-2 text-sm outline-none focus:border-forest"
                   />
                   <input
                     value={actionTaken}
                     onChange={(e) => setActionTaken(e.target.value)}
-                    placeholder="Action taken (optional)"
+                    placeholder="What did you do about it? (optional)"
                     className="w-full rounded-lg border border-hairline px-3 py-2 text-sm outline-none focus:border-forest"
                   />
                   <button
@@ -467,10 +467,10 @@ export default function HouseDetailPage() {
                     disabled={isSubmittingInspection}
                     className="rounded-lg bg-forest px-4 py-2 text-sm font-bold text-white hover:bg-forest-dark disabled:opacity-60"
                   >
-                    {isSubmittingInspection ? 'Saving...' : 'Save Inspection'}
+                    {isSubmittingInspection ? 'Saving...' : 'Save'}
                   </button>
                   {openAlert ? (
-                    <p className="text-xs text-muted">Saving this will resolve the open alert for this house.</p>
+                    <p className="text-xs text-muted">Saving this will close the warning for this house.</p>
                   ) : null}
                 </form>
               ) : null}
@@ -478,14 +478,14 @@ export default function HouseDetailPage() {
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <TrendCard title="Mortality trend" data={trends} dataKey="mortality" color="#C8433A" Icon={Skull} goodDirection="down" />
-            <TrendCard title="Feed trend (kg)" data={trends} dataKey="feed_kg" color="#C05A1D" Icon={Wheat} />
-            <TrendCard title="Water trend (L)" data={trends} dataKey="water_liters" color="#6C63D6" Icon={Droplets} />
-            <TrendCard title="Risk history" data={trends} dataKey="risk_score" color="#16222B" Icon={LineChart} goodDirection="down" />
+            <TrendCard title="Dead birds" data={trends} dataKey="mortality" color="#C8433A" Icon={Skull} goodDirection="down" />
+            <TrendCard title="Feed eaten (kg)" data={trends} dataKey="feed_kg" color="#C05A1D" Icon={Wheat} />
+            <TrendCard title="Water drunk (litres)" data={trends} dataKey="water_liters" color="#6C63D6" Icon={Droplets} />
+            <TrendCard title="Risk over time" data={trends} dataKey="risk_score" color="#16222B" Icon={LineChart} goodDirection="down" />
           </div>
 
           <div className="mt-8 rounded-xl border border-hairline bg-surface p-5 shadow-sm">
-            <h2 className="text-sm font-bold text-navy">Recent Flock Checks</h2>
+            <h2 className="text-sm font-bold text-navy">Recent checks</h2>
             <div className="mt-3 space-y-1">
               {checks.slice(0, 10).map((c) => {
                 const PeriodIcon = PERIOD_ICON[c.period] || Clock3
@@ -501,7 +501,7 @@ export default function HouseDetailPage() {
                     <span className="w-36 shrink-0 text-secondary">
                       {formatClock(c.recorded_at)} · <span className="capitalize">{c.period}</span>
                     </span>
-                    <span className="flex-1 text-secondary">Mortality {c.mortality}</span>
+                    <span className="flex-1 text-secondary">Dead birds: {c.mortality}</span>
                     <StatusBadge status={c.risk_status} score={c.risk_score} size="sm" />
                     <ChevronRight size={15} className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
                   </div>
@@ -512,19 +512,19 @@ export default function HouseDetailPage() {
 
           {inspections.length > 0 ? (
             <div className="mt-4 rounded-xl border border-hairline bg-surface p-5 shadow-sm">
-              <h2 className="text-sm font-bold text-navy">Recent Inspections</h2>
+              <h2 className="text-sm font-bold text-navy">What you found before</h2>
               <div className="mt-3 space-y-3">
                 {inspections.slice(0, 5).map((insp) => (
                   <div key={insp.id} className="border-b border-hairline pb-3 last:border-0 last:pb-0">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold capitalize text-navy">
-                        {(insp.finding_category || 'inspection').replaceAll('_', ' ')}
+                        {FINDING_CATEGORIES.find((cat) => cat.value === insp.finding_category)?.label || 'Check-up'}
                       </span>
                       <span className="text-xs text-muted">{timeAgo(insp.created_at)}</span>
                     </div>
                     <p className="mt-1 text-sm text-secondary">{insp.findings}</p>
                     {insp.action_taken ? (
-                      <p className="mt-1 text-xs text-secondary">Action: {insp.action_taken}</p>
+                      <p className="mt-1 text-xs text-secondary">What was done: {insp.action_taken}</p>
                     ) : null}
                     {insp.performed_by ? (
                       <p className="mt-1 text-xs text-muted">By {insp.performed_by}</p>

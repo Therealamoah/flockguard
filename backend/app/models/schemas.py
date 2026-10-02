@@ -3,7 +3,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.roles import Role
 from app.risk_engine.models import (
@@ -44,7 +44,9 @@ class HouseCreate(BaseModel):
 
 class FlockCheckCreate(BaseModel):
     period: CheckPeriod
-    bird_count: int
+    # bird_count is no longer submitted - the backend derives it from the
+    # active flock's current_bird_count minus this mortality (see
+    # app/api/routes/flock_checks.py::submit_flock_check).
     mortality: int = 0
     sick_or_injured: int = 0
     feed_kg: float | None = None
@@ -84,6 +86,10 @@ class FlockCheckResponse(BaseModel):
     # Present only on evening/emergency checks that had a same-day Morning
     # Check to compare against; None otherwise (never an error).
     morning_comparison: dict[str, Any] | None = None
+    # The active flock's running count after this check (previous count
+    # minus this check's mortality) - lets the frontend show the new total
+    # without a second fetch.
+    bird_count: int
 
 
 class AskRequest(BaseModel):
@@ -119,6 +125,14 @@ class FlockUpdate(BaseModel):
     status: FlockStatus
 
 
+class FlockCountReconcile(BaseModel):
+    """Manual correction of a flock's running bird count after a physical
+    recount, independent of the daily mortality-driven decrement."""
+
+    current_bird_count: int = Field(ge=0)
+    reason: str | None = None
+
+
 class InspectionCreate(BaseModel):
     findings: str
     # New, all optional so existing callers/older clients keep working
@@ -131,10 +145,43 @@ class InspectionCreate(BaseModel):
     photo_public_id: str | None = None
 
 
+class PhotoAnalysis(BaseModel):
+    is_poultry: bool
+    summary: str
+    observations: list[str] = []
+    concerns: list[str] = []
+
+
+class FlockScanResponse(BaseModel):
+    # False when the vision model isn't configured or the call failed - the
+    # frontend asks the farmer to try again rather than showing an error.
+    available: bool
+    analysis: PhotoAnalysis | None = None
+
+
+class VoiceCheckFields(BaseModel):
+    """Flock Check values heard in a voice note - only what the farmer said."""
+
+    mortality: int | None = None
+    sick_or_injured: int | None = None
+    feed_kg: float | None = None
+    water_level: WaterLevel | None = None
+    water_liters: float | None = None
+    activity: ActivityLevel | None = None
+    feeding_behaviour: FeedingBehaviour | None = None
+    crowding_observed: bool | None = None
+    unusual_sound_observed: bool | None = None
+    temperature_c: float | None = None
+    humidity_pct: float | None = None
+    heard: str | None = None
+
+
 class MediaUploadResponse(BaseModel):
     url: str
     public_id: str
     transcript: str | None = None
+    voice_fields: VoiceCheckFields | None = None
+    photo_analysis: PhotoAnalysis | None = None
 
 
 # ---------------------------------------------------------------------------

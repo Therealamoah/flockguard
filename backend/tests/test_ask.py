@@ -55,7 +55,7 @@ def test_ask_ai_service_unavailable_returns_friendly_error_not_a_crash(authed_cl
     response = authed_client.post("/ask", json={"question": "Which house should I inspect first?", "farm_id": farm["id"]})
 
     assert response.status_code == 502
-    assert "temporarily unavailable" in response.json()["detail"]
+    assert "not available right now" in response.json()["detail"]
 
 
 def test_ask_with_no_houses_or_history_does_not_crash(authed_client, monkeypatch):

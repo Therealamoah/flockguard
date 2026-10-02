@@ -4,36 +4,36 @@
 // look first and why. Never a disease diagnosis.
 const SUGGESTIONS = {
   mortality: {
-    headline: 'Inspect for early signs of illness or injury',
-    detail: 'Given the mortality uptick.',
+    headline: 'Look closely at the birds for sickness or wounds',
+    detail: 'More birds died than usual.',
   },
   feed: {
-    headline: 'Check feeder lines and feed quality',
-    detail: 'Most likely cause of the feed dip.',
+    headline: 'Check the feeders and the feed',
+    detail: 'The birds ate less feed - make sure feeders are full and the feed is not spoilt.',
   },
   water: {
-    headline: 'Check water lines and nipples/drinkers',
-    detail: 'Water intake dropped this check.',
+    headline: 'Check the drinkers and water lines',
+    detail: 'The birds drank less water - look for blocked or empty drinkers.',
   },
   activity: {
-    headline: 'Observe bird movement and posture closely',
-    detail: 'Reduced activity was reported.',
+    headline: 'Watch how the birds walk and stand',
+    detail: 'The birds are less active than usual.',
   },
   feeding_behaviour: {
-    headline: 'Watch feeding time closely',
-    detail: 'Birds may be avoiding feeders.',
+    headline: 'Watch the birds at feeding time',
+    detail: 'They may be staying away from the feeders.',
   },
   crowding: {
-    headline: 'Check stocking density and ventilation',
-    detail: 'Crowding was observed.',
+    headline: 'Check if the house is too full, too cold or not airy enough',
+    detail: 'The birds were huddling together.',
   },
   sound: {
-    headline: 'Listen for respiratory distress',
-    detail: 'Unusual noise was reported.',
+    headline: 'Listen for coughing, sneezing or noisy breathing',
+    detail: 'Strange sounds were heard.',
   },
   sick_or_injured: {
-    headline: 'Isolate and examine affected birds',
-    detail: 'Sick or injured birds were observed.',
+    headline: 'Separate the sick birds and look at them closely',
+    detail: 'Sick or hurt birds were seen.',
   },
 }
 
@@ -43,6 +43,6 @@ export function inspectionPriorities(factors, limit = 3) {
     .slice(0, limit)
     .map((f) => ({
       key: f.key,
-      ...(SUGGESTIONS[f.key] || { headline: 'Inspect this house closely', detail: f.label }),
+      ...(SUGGESTIONS[f.key] || { headline: 'Look over this house closely', detail: f.label }),
     }))
 }
