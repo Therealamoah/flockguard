@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from_email: str = ""  # defaults to smtp_username if blank
     smtp_from_name: str = "FlockGuard"
+    # Where new Enterprise requests are emailed (blank = only shown in the
+    # admin console's Enterprise page, no email).
+    sales_notification_email: str = ""
 
     # Paystack (real payment processing for Starter/Growth/Pro - see
     # app/services/paystack_service.py and app/services/billing_service.py's

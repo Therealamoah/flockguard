@@ -175,6 +175,13 @@ export const api = {
     checkout: (plan) => post('/billing/checkout', { plan }),
     verify: (reference) => post('/billing/verify', { reference }),
     cancel: () => post('/billing/cancel'),
+    enterpriseRequest: () => get('/billing/enterprise-request'),
+    upgradeOffer: () => get('/billing/upgrade-offer'),
+    dismissUpgradeOffer: () => post('/billing/upgrade-offer/dismiss'),
+    requestEnterprise: (data) => post('/billing/enterprise-request', data),
+  },
+  activity: {
+    heartbeat: (path) => post('/activity/heartbeat', { path }),
   },
   agent: {
     recommendations: ({ farmId, houseId, status } = {}) => {
@@ -188,5 +195,35 @@ export const api = {
     acknowledge: (id) => post(`/agent/recommendations/${id}/acknowledge`),
     complete: (id) => post(`/agent/recommendations/${id}/complete`),
     dismiss: (id) => post(`/agent/recommendations/${id}/dismiss`),
+  },
+  // Platform admin console - every route 403s unless the token carries the
+  // platform_admin claim (backend/app/core/admin_auth.py).
+  admin: {
+    me: () => get('/admin/me'),
+    overview: () => get('/admin/overview'),
+    orgs: () => get('/admin/orgs'),
+    org: (orgId) => get(`/admin/orgs/${orgId}`),
+    overrideSubscription: (orgId, data) => patch(`/admin/orgs/${orgId}/subscription`, data),
+    offerUpgrade: (orgId, data) => post(`/admin/orgs/${orgId}/upgrade-offer`, data),
+    withdrawUpgradeOffer: (orgId) => del(`/admin/orgs/${orgId}/upgrade-offer`),
+    suspendOrg: (orgId, reason) => post(`/admin/orgs/${orgId}/suspend`, { reason }),
+    reactivateOrg: (orgId, reason) => post(`/admin/orgs/${orgId}/reactivate`, { reason }),
+    users: (q) => get(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    disableUser: (uid, reason) => post(`/admin/users/${uid}/disable`, { reason }),
+    enableUser: (uid, reason) => post(`/admin/users/${uid}/enable`, { reason }),
+    aiUsage: () => get('/admin/ai-usage'),
+    activity: () => get('/admin/activity'),
+    enterprise: () => get('/admin/enterprise'),
+    updateEnterpriseLead: (id, data) => patch(`/admin/enterprise/${id}`, data),
+    emails: () => get('/admin/emails'),
+    briefing: () => get('/admin/briefing'),
+    sendTestEmail: (key) => post(`/admin/emails/${key}/test`),
+    auditLog: ({ orgId, limit } = {}) => {
+      const params = new URLSearchParams()
+      if (orgId) params.set('org_id', orgId)
+      if (limit) params.set('limit', limit)
+      const qs = params.toString()
+      return get(`/admin/audit-log${qs ? `?${qs}` : ''}`)
+    },
   },
 }

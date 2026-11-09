@@ -132,6 +132,23 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Platform admin audit trail (backend/app/services/admin_service.py) -
+    // backend-only. The /admin console reads it through the API, gated by
+    // the platform_admin claim; no client ever reads or writes it here.
+    match /admin_audit_log/{entryId} {
+      allow read, write: if false;
+    }
+
+    // Activity heartbeats (activity_service.py) and Enterprise leads
+    // (enterprise_service.py) - both written and read only by the backend.
+    match /user_activity/{uid} {
+      allow read, write: if false;
+    }
+
+    match /enterprise_requests/{requestId} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

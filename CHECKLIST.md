@@ -77,6 +77,14 @@ no matter how severe - now falls back to an absolute reference rate
 (0.5%/day) when there's no baseline. Also fixed `/ask` referencing raw
 Firestore house IDs instead of house names in Grok's context.
 
+## Phase 5b — Platform Admin Console
+- [x] `platform_admin` custom claim + `require_platform_admin` (`backend/app/core/admin_auth.py`), granted only via `backend/scripts/grant_platform_admin.py`
+- [x] `/admin` API: overview KPIs, orgs list/detail, user search, AI usage, audit log
+- [x] Admin writes (plan override/comp, suspend/reactivate org, disable/enable user) — every one requires a reason and is written to `admin_audit_log`
+- [x] `/admin` frontend (separate layout, outside the farm bootstrap) + "Admin console" link for admins
+- [ ] Move overview numbers to a scheduled daily snapshot once platform volume grows (currently scans collection groups per load)
+- [ ] v2: agent-run explorer, alert-quality metrics, announcements, knowledge-base upload/ingest, feature flags
+
 ## Phase 6 — Deployment
 - [ ] Frontend → Vercel
 - [ ] Backend → Render

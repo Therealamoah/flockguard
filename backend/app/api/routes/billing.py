@@ -12,14 +12,17 @@ app/core/permissions.py::require_owner.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from google.cloud.firestore import Client
 
 from app.core.config import settings
+from app.core.firebase import get_current_user
 from app.core.firestore import get_firestore_client
 from app.core.permissions import require_owner
-from app.models.schemas import CheckoutRequest, VerifyPaymentRequest
-from app.services import paystack_service
+from app.core.refs import farms_ref
+from app.models.schemas import CheckoutRequest, EnterpriseRequestCreate, VerifyPaymentRequest
+from app.services import enterprise_service, paystack_service, upgrade_offer_service
+from app.services.email_service import send_enterprise_request_email
 from app.services.billing_service import (
     PILOT_LIMITS,
     PLAN_CATALOG,
@@ -99,6 +102,81 @@ def get_usage(
             "used_mb": round(storage_bytes / (1024 * 1024), 1),
         },
     }
+
+
+def _public_request(request: dict) -> dict:
+    """What the org itself sees about its own request - never the admin notes."""
+    return {k: request.get(k) for k in ("id", "status", "created_at", "requested", "contact_method")}
+
+
+@router.get("/enterprise-request")
+def get_enterprise_request(
+    membership: dict = Depends(require_owner),
+    db: Client = Depends(get_firestore_client),
+):
+    """The org's open Enterprise request, if any - BillingPage shows
+    "request received" instead of the form while one is open."""
+    request = enterprise_service.open_request_for_org(db, membership["org_id"])
+    return {"request": _public_request(request) if request else None}
+
+
+@router.post("/enterprise-request", status_code=201)
+def create_enterprise_request(
+    payload: EnterpriseRequestCreate,
+    background_tasks: BackgroundTasks,
+    membership: dict = Depends(require_owner),
+    user: dict = Depends(get_current_user),
+    db: Client = Depends(get_firestore_client),
+):
+    """Replaces the old mailto: link, so every Enterprise enquiry is recorded
+    and shows up in the admin console's Enterprise page."""
+    org_id = membership["org_id"]
+    subscription = get_or_create_subscription(db, org_id)
+    farms = [f.to_dict() for f in farms_ref(db, org_id).stream()]
+    request, created = enterprise_service.create_request(
+        db,
+        membership=membership,
+        user=user,
+        payload=payload,
+        current_plan=subscription.get("plan", "pilot"),
+        usage={
+            "houses": count_houses(db, org_id),
+            "birds": count_birds(db, org_id),
+            "team_members": count_team_seats(db, org_id),
+            "ai_requests_month": get_ai_requests_this_month(db, org_id),
+        },
+        farm_name=next((f.get("name") for f in farms if f.get("name")), None),
+    )
+    if created and settings.sales_notification_email:
+        background_tasks.add_task(
+            send_enterprise_request_email,
+            to_email=settings.sales_notification_email,
+            request=request,
+            admin_url=f"{settings.app_public_url}/admin/enterprise",
+        )
+    return {"request": _public_request(request), "created": created}
+
+
+@router.get("/upgrade-offer")
+def get_upgrade_offer(
+    membership: dict = Depends(require_owner),
+    db: Client = Depends(get_firestore_client),
+):
+    """A plan FlockGuard suggested for this org (admin console → Offer
+    upgrade), while it's still relevant - shown as a banner in the app."""
+    offer = upgrade_offer_service.get_open_offer(db, membership["org_id"])
+    if not offer:
+        return {"offer": None}
+    return {"offer": {k: offer.get(k) for k in ("plan", "message", "offered_at", "price_ghs", "limits")}}
+
+
+@router.post("/upgrade-offer/dismiss", status_code=204)
+def dismiss_upgrade_offer(
+    membership: dict = Depends(require_owner),
+    db: Client = Depends(get_firestore_client),
+):
+    if upgrade_offer_service.get_open_offer(db, membership["org_id"]):
+        upgrade_offer_service.set_status(db, membership["org_id"], "dismissed")
 
 
 @router.post("/checkout")

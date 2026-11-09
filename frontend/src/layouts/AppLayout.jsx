@@ -19,14 +19,17 @@ import {
   Moon,
   Menu,
   X,
+  ShieldCheck,
 } from 'lucide-react'
 import LogoMark from '../components/Logo'
+import UpgradeOfferBanner from '../components/UpgradeOfferBanner'
 import { useAuthStore } from '../store/useAuthStore'
 import { useAppStore } from '../store/useAppStore'
 import { useThemeStore } from '../store/useThemeStore'
-import { logout } from '../lib/firebase'
+import { hasPlatformAdminClaim, logout } from '../lib/firebase'
 import { api } from '../lib/api'
 import { onForegroundPush } from '../lib/push'
+import { useActivityHeartbeat } from '../lib/useActivityHeartbeat'
 import { displayName, initialsFor } from '../lib/format'
 
 const NAV = [
@@ -83,11 +86,13 @@ export default function AppLayout() {
   const [sidebarPeek, setSidebarPeek] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [pushToasts, setPushToasts] = useState([])
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
   const hideTimeoutRef = useRef(null)
   const { user } = useAuthStore()
   const { currentFarmId } = useAppStore()
   const { theme, toggleTheme } = useThemeStore()
   const navigate = useNavigate()
+  useActivityHeartbeat(Boolean(user))
 
   function showSidebar() {
     clearTimeout(hideTimeoutRef.current)
@@ -99,6 +104,12 @@ export default function AppLayout() {
   }
 
   useEffect(() => () => clearTimeout(hideTimeoutRef.current), [])
+
+  useEffect(() => {
+    hasPlatformAdminClaim()
+      .then(setIsPlatformAdmin)
+      .catch(() => setIsPlatformAdmin(false))
+  }, [user])
 
   useEffect(() => {
     if (!drawerOpen) return
@@ -235,6 +246,15 @@ export default function AppLayout() {
                 <div className="truncate border-b border-hairline px-3 py-2 text-secondary">
                   {user?.email}
                 </div>
+                {isPlatformAdmin ? (
+                  <button
+                    onClick={() => navigate('/admin')}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-navy hover:bg-forest/5"
+                  >
+                    <ShieldCheck size={14} />
+                    Admin console
+                  </button>
+                ) : null}
                 <button
                   onClick={handleLogout}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-navy hover:bg-forest/5"
@@ -291,6 +311,7 @@ export default function AppLayout() {
           </NavLink>
         </div>
 
+        <UpgradeOfferBanner />
         <main className="flex-1">
           <Outlet />
         </main>
@@ -385,6 +406,18 @@ export default function AppLayout() {
                   <span className="block truncate text-xs text-white/50">{user?.email}</span>
                 </span>
               </div>
+              {isPlatformAdmin ? (
+                <button
+                  onClick={() => {
+                    setDrawerOpen(false)
+                    navigate('/admin')
+                  }}
+                  className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white"
+                >
+                  <ShieldCheck size={16} />
+                  Admin console
+                </button>
+              ) : null}
               <button
                 onClick={() => {
                   setDrawerOpen(false)

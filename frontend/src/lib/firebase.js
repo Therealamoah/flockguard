@@ -40,6 +40,17 @@ export function forceRefreshToken() {
   return auth.currentUser ? auth.currentUser.getIdToken(true) : Promise.resolve(null)
 }
 
+// The platform_admin claim (granted by backend/scripts/grant_platform_admin.py)
+// only decides whether to SHOW the admin console - the backend re-checks it
+// on every /admin request, so editing this in devtools gets you nothing.
+// `forceRefresh` fetches a new token so a just-granted claim shows up
+// without signing out (a cached token can be up to an hour old).
+export async function hasPlatformAdminClaim(forceRefresh = false) {
+  if (!auth.currentUser) return false
+  const result = await auth.currentUser.getIdTokenResult(forceRefresh)
+  return result.claims.platform_admin === true
+}
+
 export function registerWithEmail(email, password) {
   return createUserWithEmailAndPassword(auth, email, password)
 }

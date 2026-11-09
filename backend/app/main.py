@@ -22,6 +22,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 _logger = logging.getLogger(__name__)
 
 from app.api.routes import (
+    activity,
+    admin,
     agent,
     alerts,
     analytics,
@@ -146,3 +148,5 @@ app.include_router(team.router)
 app.include_router(settings_routes.router)
 app.include_router(billing.router)
 app.include_router(agent.router)
+app.include_router(admin.router)
+app.include_router(activity.router)

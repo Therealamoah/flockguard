@@ -344,3 +344,62 @@ class CheckoutRequest(BaseModel):
 
 class VerifyPaymentRequest(BaseModel):
     reference: str
+
+
+class AdminActionRequest(BaseModel):
+    """Every platform-admin write carries a human reason - it lands in the
+    admin audit log (app/services/admin_service.py::record_audit)."""
+
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class AdminPlanOverride(AdminActionRequest):
+    plan: SubscriptionPlan
+    comped: bool = False
+    # Partial override on top of the plan's own limits, e.g. {"houses": 40}.
+    limits: dict[Literal["houses", "birds", "team_members", "ai_requests_monthly"], int | None] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Activity tracking + Enterprise leads (admin console)
+# ---------------------------------------------------------------------------
+
+
+class HeartbeatRequest(BaseModel):
+    """Sent by the farm app (AppLayout.jsx) about once a minute while the
+    tab is visible - the only thing "who is using FlockGuard" is based on."""
+
+    path: str | None = Field(default=None, max_length=200)
+
+
+class EnterpriseContactMethod(str, Enum):
+    CALL = "call"
+    WHATSAPP = "whatsapp"
+    EMAIL = "email"
+
+
+class EnterpriseRequestCreate(BaseModel):
+    houses: int | None = Field(default=None, ge=0, le=100_000)
+    birds: int | None = Field(default=None, ge=0, le=100_000_000)
+    phone: str | None = Field(default=None, max_length=40)
+    contact_method: EnterpriseContactMethod = EnterpriseContactMethod.EMAIL
+    message: str | None = Field(default=None, max_length=2000)
+
+
+class EnterpriseLeadStatus(str, Enum):
+    NEW = "new"
+    CONTACTED = "contacted"
+    WON = "won"
+    LOST = "lost"
+
+
+class EnterpriseLeadUpdate(BaseModel):
+    status: EnterpriseLeadStatus | None = None
+    note: str | None = Field(default=None, min_length=1, max_length=1000)
+
+
+class UpgradeOfferRequest(BaseModel):
+    """Admin suggests a paid plan; the farmer upgrades and pays themselves."""
+
+    plan: Literal["starter", "growth", "pro"]
+    message: str | None = Field(default=None, max_length=1000)

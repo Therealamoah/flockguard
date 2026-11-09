@@ -5,8 +5,10 @@ SMTP-config-guarded, never raises" is enforced in exactly one place rather
 than copy-pasted per email type.
 """
 
+import html
 import logging
 from email.message import EmailMessage
+from typing import NamedTuple
 
 import aiosmtplib
 
@@ -100,16 +102,19 @@ async def _send(*, to_email: str, subject: str, text_body: str, html_body: str) 
         return False
 
 
-async def send_invite_email(*, to_email: str, farm_name: str, role: str, invited_by_email: str | None) -> bool:
-    """Emails a team invite via SMTP (e.g. Gmail + an App Password).
+class EmailContent(NamedTuple):
+    subject: str
+    text_body: str
+    html_body: str
 
-    Best-effort: a failed or unconfigured send must never block creating the
-    invitation itself - the invite still works if the person just signs in
-    directly with the invited email (see team.py::my_invitations), this is
-    only a courtesy notification. Returns whether the email actually went
-    out, so the caller can tell the frontend whether to fall back to
-    "share this invite directly".
-    """
+
+# Each email is split into a pure build_* function (what the email says) and
+# a send_* function (who gets it). The admin console's Emails page
+# (app/api/routes/admin.py) previews the very same build_* output, so what
+# an admin sees there is exactly what people receive.
+
+
+def build_invite_email(*, to_email: str, farm_name: str, role: str, invited_by_email: str | None) -> EmailContent:
     inviter_line = f" by {invited_by_email}" if invited_by_email else ""
     register_url = f"{settings.app_public_url}/register"
 
@@ -130,20 +135,30 @@ async def send_invite_email(*, to_email: str, farm_name: str, role: str, invited
         Sign in or create an account using <strong>{to_email}</strong> to see and accept it.
       </p>
     """
-    return await _send(
-        to_email=to_email,
+    return EmailContent(
         subject=f"You've been invited to join {farm_name} on FlockGuard",
         text_body=text_body,
         html_body=_html_shell(f"Join {farm_name} on FlockGuard", body_html),
     )
 
 
-async def send_password_reset_email(*, to_email: str, reset_link: str) -> bool:
-    """Best-effort, same as send_invite_email - the caller (see
-    app/api/routes/auth.py) always returns a generic success response
-    regardless of whether this actually sends, so a failure here is never
-    visible to whoever's requesting the reset (avoids confirming/denying
-    that an email address has an account)."""
+async def send_invite_email(*, to_email: str, farm_name: str, role: str, invited_by_email: str | None) -> bool:
+    """Emails a team invite via SMTP.
+
+    Best-effort: a failed or unconfigured send must never block creating the
+    invitation itself - the invite still works if the person just signs in
+    directly with the invited email (see team.py::my_invitations), this is
+    only a courtesy notification. Returns whether the email actually went
+    out, so the caller can tell the frontend whether to fall back to
+    "share this invite directly".
+    """
+    content = build_invite_email(
+        to_email=to_email, farm_name=farm_name, role=role, invited_by_email=invited_by_email
+    )
+    return await _send(to_email=to_email, **content._asdict())
+
+
+def build_password_reset_email(*, to_email: str, reset_link: str) -> EmailContent:
     text_body = (
         "We received a request to reset your FlockGuard password.\n\n"
         f"Reset it here: {reset_link}\n\n"
@@ -162,25 +177,24 @@ async def send_password_reset_email(*, to_email: str, reset_link: str) -> bool:
         If you didn't request this, you can safely ignore this email - your password won't change.
       </p>
     """
-    return await _send(
-        to_email=to_email,
+    return EmailContent(
         subject="Reset your FlockGuard password",
         text_body=text_body,
         html_body=_html_shell("Reset your FlockGuard password", body_html),
     )
 
 
-async def send_alert_email(
-    *, to_emails: list[str], farm_name: str, house_name: str, status: str, score: int, factors: list[str]
-) -> bool:
-    """Notifies an org's owners/managers (see
-    membership_service.get_notification_emails) the moment a NEW alert
-    opens for a house - not on every subsequent check while it stays open,
-    only its creation (see the call site in flock_checks.py), so this never
-    turns into a flood of near-duplicate emails for one ongoing issue."""
-    if not to_emails:
-        return False
+async def send_password_reset_email(*, to_email: str, reset_link: str) -> bool:
+    """Best-effort, same as send_invite_email - the caller (see
+    app/api/routes/auth.py) always returns a generic success response
+    regardless of whether this actually sends, so a failure here is never
+    visible to whoever's requesting the reset (avoids confirming/denying
+    that an email address has an account)."""
+    content = build_password_reset_email(to_email=to_email, reset_link=reset_link)
+    return await _send(to_email=to_email, **content._asdict())
 
+
+def build_alert_email(*, farm_name: str, house_name: str, status: str, score: int, factors: list[str]) -> EmailContent:
     status_label = status.capitalize()
     status_color = STATUS_COLORS.get(status, "#B3811A")
     alerts_url = f"{settings.app_public_url}/alerts"
@@ -211,19 +225,153 @@ async def send_alert_email(
       {factors_html}
       {_cta_button("See the warning", alerts_url)}
     """
-    html_body = _html_shell(f"{house_name} is at {status_label} risk", body_html)
+    return EmailContent(
+        subject=f"{house_name} is at {status_label} risk - FlockGuard",
+        text_body=text_body,
+        html_body=_html_shell(f"{house_name} is at {status_label} risk", body_html),
+    )
+
+
+async def send_alert_email(
+    *, to_emails: list[str], farm_name: str, house_name: str, status: str, score: int, factors: list[str]
+) -> bool:
+    """Notifies an org's owners/managers (see
+    membership_service.get_notification_emails) the moment a NEW alert
+    opens for a house - not on every subsequent check while it stays open,
+    only its creation (see the call site in flock_checks.py), so this never
+    turns into a flood of near-duplicate emails for one ongoing issue."""
+    if not to_emails:
+        return False
+
+    content = build_alert_email(farm_name=farm_name, house_name=house_name, status=status, score=score, factors=factors)
 
     # Sent individually (not one message with every recipient in To:) so a
     # bad address for one manager can't affect delivery to the rest, and so
     # no recipient sees the others' email addresses.
     results = []
     for to_email in to_emails:
-        results.append(
-            await _send(
-                to_email=to_email,
-                subject=f"{house_name} is at {status_label} risk - FlockGuard",
-                text_body=text_body,
-                html_body=html_body,
-            )
-        )
+        results.append(await _send(to_email=to_email, **content._asdict()))
     return any(results)
+
+
+def build_enterprise_request_email(*, request: dict, admin_url: str | None = None) -> EmailContent:
+    who = request.get("display_name") or request.get("email") or request["org_id"]
+    farm = request.get("farm_name") or "No farm name"
+    requested = request.get("requested") or {}
+    usage = request.get("usage") or {}
+    lines = [
+        f"Organization: {farm} ({request['org_id']})",
+        f"Contact: {who} <{request.get('email') or '-'}>",
+        f"Phone: {request.get('phone') or '-'} (prefers {request.get('contact_method')})",
+        f"Current plan: {request.get('current_plan')}",
+        f"Now: {usage.get('houses', 0)} houses, {usage.get('birds', 0)} birds, {usage.get('team_members', 0)} team members",
+        f"Wants: {requested.get('houses') or '?'} houses, {requested.get('birds') or '?'} birds",
+        f"Message: {request.get('message') or '-'}",
+    ]
+    text_body = "New FlockGuard Enterprise request\n\n" + "\n".join(lines)
+    if admin_url:
+        text_body += f"\n\nOpen in the admin console: {admin_url}"
+    rows = "".join(f'<li style="margin:2px 0;">{html.escape(line)}</li>' for line in lines)
+    body_html = f"""
+      <h2 style="color:#1B4332;margin:0 0 4px;">New Enterprise request</h2>
+      <p style="color:#475569;font-size:14px;"><strong>{html.escape(who)}</strong> asked about Enterprise.</p>
+      <ul style="color:#475569;font-size:14px;padding-left:18px;">{rows}</ul>
+      {_cta_button("Open Enterprise leads", admin_url) if admin_url else ""}
+    """
+    return EmailContent(
+        subject=f"Enterprise request: {farm}",
+        text_body=text_body,
+        html_body=_html_shell(f"Enterprise request from {farm}", body_html),
+    )
+
+
+async def send_enterprise_request_email(*, to_email: str, request: dict, admin_url: str | None = None) -> bool:
+    """Tells the sales inbox (settings.sales_notification_email) that an org
+    asked for Enterprise. Best-effort - the request is already saved and
+    visible in the admin console's Enterprise page either way."""
+    content = build_enterprise_request_email(request=request, admin_url=admin_url)
+    return await _send(to_email=to_email, **content._asdict())
+
+
+def build_upgrade_offer_email(
+    *, farm_name: str, plan: str, price_ghs: int | None, limits: dict | None, message: str | None
+) -> EmailContent:
+    plan_label = plan.capitalize()
+    billing_url = f"{settings.app_public_url}/billing?offer={plan}"
+    price = f"GHS {price_ghs:,}/month" if price_ghs else "custom pricing"
+    limit_lines = (
+        [
+            f"{limits['houses']} houses",
+            f"{limits['birds']:,} birds",
+            f"{limits['team_members']} team members",
+            f"{limits['ai_requests_monthly']:,} AI requests a month",
+        ]
+        if limits
+        else []
+    )
+    note = (message or "").strip()
+    text_body = (
+        f"We think the {plan_label} plan would suit {farm_name} - {price}.\n\n"
+        + (f"{note}\n\n" if note else "")
+        + ("It includes:\n" + "\n".join(f"- {line}" for line in limit_lines) + "\n\n" if limit_lines else "")
+        + f"Upgrade from your Billing page when you're ready: {billing_url}\n\n"
+        "Nothing changes until you choose to upgrade.\n\n- FlockGuard"
+    )
+    limits_html = (
+        '<ul style="color:#475569;font-size:14px;padding-left:18px;margin:12px 0;">'
+        + "".join(f'<li style="margin-bottom:4px;">{html.escape(line)}</li>' for line in limit_lines)
+        + "</ul>"
+        if limit_lines
+        else ""
+    )
+    note_html = (
+        f'<p style="color:#16222B;font-size:14px;background:#F6F5F1;border-radius:10px;padding:12px 14px;">'
+        f"{html.escape(note)}</p>"
+        if note
+        else ""
+    )
+    body_html = f"""
+      <h2 style="color:#1B4332;margin:0 0 4px;">A plan that fits {html.escape(farm_name)}</h2>
+      <p style="color:#475569;font-size:14px;">
+        We think <strong>{plan_label}</strong> ({price}) would suit your farm.
+      </p>
+      {note_html}
+      {limits_html}
+      {_cta_button(f"Upgrade to {plan_label}", billing_url)}
+      {_fallback_link(billing_url)}
+      <p style="font-size:13px;color:#475569;margin-top:16px;">
+        Nothing changes until you choose to upgrade. Payment is by card through Paystack.
+      </p>
+    """
+    return EmailContent(
+        subject=f"Upgrade {farm_name} to {plan_label} - FlockGuard",
+        text_body=text_body,
+        html_body=_html_shell(f"We think {plan_label} would suit {farm_name}", body_html),
+    )
+
+
+async def send_upgrade_offer_email(
+    *, to_email: str, farm_name: str, plan: str, price_ghs: int | None, limits: dict | None, message: str | None
+) -> bool:
+    """Sent when an admin offers an org an upgrade (app/services/upgrade_offer_service.py).
+    Best-effort - the in-app banner shows the offer either way."""
+    content = build_upgrade_offer_email(
+        farm_name=farm_name, plan=plan, price_ghs=price_ghs, limits=limits, message=message
+    )
+    return await _send(to_email=to_email, **content._asdict())
+
+
+def delivery_status() -> dict:
+    """What the admin console's Emails page shows about how email goes out.
+    Never includes the password."""
+    return {
+        "configured": bool(settings.smtp_username and settings.smtp_password),
+        "host": settings.smtp_host,
+        "port": settings.smtp_port,
+        "provider": "Brevo" if "brevo" in (settings.smtp_host or "") else (
+            "Gmail" if "gmail" in (settings.smtp_host or "") else "SMTP"
+        ),
+        "from_email": settings.smtp_from_email or settings.smtp_username or None,
+        "from_name": settings.smtp_from_name,
+        "sales_notification_email": settings.sales_notification_email or None,
+    }

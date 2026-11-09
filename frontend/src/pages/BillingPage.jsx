@@ -12,6 +12,9 @@ import {
   Check,
   Mail,
   AlertTriangle,
+  Briefcase,
+  X,
+  Rocket,
 } from 'lucide-react'
 import { api } from '../lib/api'
 
@@ -47,15 +50,21 @@ function UsageBar({ label, Icon, used, limit }) {
   )
 }
 
-function PlanCard({ plan, isCurrent, onUpgrade, isCheckingOut }) {
+function PlanCard({ plan, isCurrent, onUpgrade, isCheckingOut, enterpriseRequest, onRequestEnterprise, isRecommended }) {
   const isEnterprise = plan.plan === 'enterprise'
   return (
     <div
       className={[
         'flex flex-col rounded-xl border bg-surface p-4 shadow-sm',
-        isCurrent ? 'border-forest ring-1 ring-forest/30' : 'border-hairline',
+        isCurrent || isRecommended ? 'border-forest ring-1 ring-forest/30' : 'border-hairline',
       ].join(' ')}
     >
+      {isRecommended && !isCurrent ? (
+        <span className="mb-2 flex w-fit items-center gap-1 rounded-full bg-forest px-2.5 py-0.5 text-[11px] font-bold text-white">
+          <Rocket size={11} />
+          Recommended for you
+        </span>
+      ) : null}
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold uppercase text-navy">{PLAN_LABEL[plan.plan]}</span>
         {isCurrent ? (
@@ -81,13 +90,20 @@ function PlanCard({ plan, isCurrent, onUpgrade, isCheckingOut }) {
       )}
       <div className="mt-3">
         {isCurrent ? null : isEnterprise ? (
-          <a
-            href="mailto:sales@flockguard.ai?subject=FlockGuard%20Enterprise"
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-hairline px-3 py-2 text-xs font-bold text-navy hover:bg-forest/5"
-          >
-            <Mail size={13} />
-            Contact Sales
-          </a>
+          enterpriseRequest ? (
+            <p className="flex items-center justify-center gap-1.5 rounded-lg bg-forest/10 px-3 py-2 text-xs font-bold text-forest">
+              <Check size={13} />
+              Request received - we'll be in touch
+            </p>
+          ) : (
+            <button
+              onClick={onRequestEnterprise}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-hairline px-3 py-2 text-xs font-bold text-navy hover:bg-forest/5"
+            >
+              <Mail size={13} />
+              Request Enterprise
+            </button>
+          )
         ) : (
           <button
             onClick={() => onUpgrade(plan.plan)}
@@ -102,6 +118,155 @@ function PlanCard({ plan, isCurrent, onUpgrade, isCheckingOut }) {
   )
 }
 
+const CONTACT_OPTIONS = [
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'call', label: 'Phone call' },
+  { value: 'email', label: 'Email' },
+]
+
+const inputClass =
+  'w-full rounded-lg border border-hairline bg-surface px-3 py-2 text-sm text-navy outline-none focus:border-forest'
+
+// Replaces the old mailto: link - saved server-side so the request shows up
+// in the admin console's Enterprise page (backend/app/services/enterprise_service.py).
+function EnterpriseRequestDialog({ usage, onClose, onSent }) {
+  const [form, setForm] = useState({ houses: '', birds: '', phone: '', contact_method: 'whatsapp', message: '' })
+  const [isSending, setIsSending] = useState(false)
+  const [error, setError] = useState('')
+  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
+  const needsPhone = form.contact_method !== 'email' && !form.phone.trim()
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setIsSending(true)
+    setError('')
+    try {
+      const { request } = await api.billing.requestEnterprise({
+        houses: form.houses === '' ? null : Number(form.houses),
+        birds: form.birds === '' ? null : Number(form.birds),
+        phone: form.phone.trim() || null,
+        contact_method: form.contact_method,
+        message: form.message.trim() || null,
+      })
+      onSent(request)
+    } catch (err) {
+      setError(err.detail || 'Could not send your request. Please try again.')
+      setIsSending(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <form
+        onSubmit={handleSubmit}
+        className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-hairline bg-surface p-5 shadow-xl"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Briefcase size={18} className="text-forest" />
+            <h2 className="font-display text-lg font-extrabold text-navy">Request Enterprise</h2>
+          </div>
+          <button type="button" onClick={onClose} className="text-muted hover:text-navy" aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        <p className="mt-1 text-sm text-secondary">
+          Tell us about your operation and our team will contact you with a custom plan.
+        </p>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <label className="text-xs font-semibold text-secondary">
+            Houses you need
+            <input
+              type="number"
+              min={0}
+              value={form.houses}
+              onChange={set('houses')}
+              placeholder={`now ${usage?.houses?.used ?? 0}`}
+              className={`mt-1 ${inputClass}`}
+            />
+          </label>
+          <label className="text-xs font-semibold text-secondary">
+            Birds you need
+            <input
+              type="number"
+              min={0}
+              value={form.birds}
+              onChange={set('birds')}
+              placeholder={`now ${(usage?.birds?.used ?? 0).toLocaleString()}`}
+              className={`mt-1 ${inputClass}`}
+            />
+          </label>
+        </div>
+
+        <label className="mt-3 block text-xs font-semibold text-secondary">
+          Phone number
+          <input
+            type="tel"
+            value={form.phone}
+            onChange={set('phone')}
+            maxLength={40}
+            placeholder="+233..."
+            className={`mt-1 ${inputClass}`}
+          />
+        </label>
+
+        <p className="mt-3 text-xs font-semibold text-secondary">Best way to reach you</p>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {CONTACT_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => setForm({ ...form, contact_method: o.value })}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                form.contact_method === o.value
+                  ? 'border-forest bg-forest text-white'
+                  : 'border-hairline text-secondary hover:border-forest'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+
+        <label className="mt-3 block text-xs font-semibold text-secondary">
+          Anything else? (optional)
+          <textarea
+            rows={3}
+            value={form.message}
+            onChange={set('message')}
+            maxLength={2000}
+            placeholder="Number of sites, what you need most..."
+            className={`mt-1 ${inputClass}`}
+          />
+        </label>
+
+        {error ? <p className="mt-2 text-sm text-critical">{error}</p> : null}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm font-semibold text-secondary hover:text-navy"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSending || needsPhone}
+            className="rounded-lg bg-forest px-4 py-2 text-sm font-bold text-white hover:bg-forest-dark disabled:opacity-60"
+          >
+            {isSending ? 'Sending...' : 'Send request'}
+          </button>
+        </div>
+        {needsPhone ? (
+          <p className="mt-2 text-right text-xs text-muted">Add a phone number for a call or WhatsApp.</p>
+        ) : null}
+      </form>
+    </div>
+  )
+}
+
 export default function BillingPage() {
   const [billing, setBilling] = useState(null)
   const [usage, setUsage] = useState(null)
@@ -110,11 +275,21 @@ export default function BillingPage() {
   const [checkoutPlan, setCheckoutPlan] = useState(null)
   const [isCancelling, setIsCancelling] = useState(false)
   const [banner, setBanner] = useState(null)
+  const [enterpriseRequest, setEnterpriseRequest] = useState(null)
+  const [showEnterpriseForm, setShowEnterpriseForm] = useState(false)
+  const [upgradeOffer, setUpgradeOffer] = useState(null)
 
   async function load() {
-    const [billingData, usageData] = await Promise.all([api.billing.get(), api.billing.usage()])
+    const [billingData, usageData, enterpriseData, offerData] = await Promise.all([
+      api.billing.get(),
+      api.billing.usage(),
+      api.billing.enterpriseRequest().catch(() => ({ request: null })),
+      api.billing.upgradeOffer().catch(() => ({ offer: null })),
+    ])
     setBilling(billingData)
     setUsage(usageData)
+    setEnterpriseRequest(enterpriseData.request)
+    setUpgradeOffer(offerData.offer)
   }
 
   // Read once at mount, outside the effect: React 18 StrictMode
@@ -256,6 +431,26 @@ export default function BillingPage() {
         </div>
       </div>
 
+      {upgradeOffer ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-forest/30 bg-forest/5 p-4">
+          <Rocket size={20} className="shrink-0 text-forest" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-navy">
+              We recommend the {upgradeOffer.plan.charAt(0).toUpperCase() + upgradeOffer.plan.slice(1)} plan for
+              your farm - GHS {upgradeOffer.price_ghs}/month
+            </p>
+            {upgradeOffer.message ? <p className="mt-0.5 text-sm text-secondary">{upgradeOffer.message}</p> : null}
+          </div>
+          <button
+            onClick={() => handleUpgrade(upgradeOffer.plan)}
+            disabled={Boolean(checkoutPlan)}
+            className="rounded-lg bg-forest px-4 py-2 text-sm font-bold text-white hover:bg-forest-dark disabled:opacity-60"
+          >
+            {checkoutPlan === upgradeOffer.plan ? 'Redirecting...' : 'Upgrade now'}
+          </button>
+        </div>
+      ) : null}
+
       <h2 className="mt-6 text-sm font-bold uppercase tracking-wide text-secondary">Usage</h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         {Object.entries(METRIC_META).map(([key, meta]) => (
@@ -295,9 +490,24 @@ export default function BillingPage() {
             isCurrent={plan.plan === currentPlan}
             onUpgrade={handleUpgrade}
             isCheckingOut={checkoutPlan === plan.plan}
+            enterpriseRequest={enterpriseRequest}
+            onRequestEnterprise={() => setShowEnterpriseForm(true)}
+            isRecommended={upgradeOffer?.plan === plan.plan}
           />
         ))}
       </div>
+
+      {showEnterpriseForm ? (
+        <EnterpriseRequestDialog
+          usage={usage}
+          onClose={() => setShowEnterpriseForm(false)}
+          onSent={(request) => {
+            setEnterpriseRequest(request)
+            setShowEnterpriseForm(false)
+            setBanner({ type: 'success', text: "Thanks - your Enterprise request is in. We'll contact you shortly." })
+          }}
+        />
+      ) : null}
     </div>
   )
 }
